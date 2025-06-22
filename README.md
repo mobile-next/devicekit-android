@@ -14,7 +14,7 @@ that is not possible through adb-shell alone.
 Once the app is installed on your device or emulator, you can set the clipboard content using the following ADB command:
 
 ```bash
-adb shell am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "this can be pasted now"
+adb shell 'am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "this can be pasted now"'
 ```
 
 ### Clearing Clipboard via ADB
@@ -27,16 +27,18 @@ adb shell am broadcast -a devicekit.clipboard.clear -n com.mobilenext.devicekit/
 
 ```bash
 # Set clipboard content
-adb shell am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "Hello World"
+adb shell 'am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "Hello World"'
 
 # Using base64 for complex text (set 'encoding' to 'base64')
 adb shell am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e encoding "base64" -e text "4pyM77iP"
 
 # Set special characters
-adb shell am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "こんにちは世界"
+adb shell 'am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "こんにちは世界"'
 ```
 
 Since **devicekit** cannot force a keypress, use `adb shell input keyevent KEYCODE_PASTE` to paste clipboard onto current input text field.
+
+Note that the single quotes after `adb shell` are required if your text includes spaces. The base64 encoding allows you to safely transfer whatever utf8 you wish to paste.
 
 ## Installation
 
