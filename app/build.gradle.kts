@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.mobilenext.clipboard"
+    namespace = "com.mobilenext.devicekit"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.mobilenext.clipboard"
+        applicationId = "com.mobilenext.devicekit"
         minSdk = 29
         targetSdk = 35
         versionCode = 1

@@ -1,4 +1,4 @@
-package com.mobilenext.clipboard
+package com.mobilenext.devicekit
 
 import android.content.BroadcastReceiver
 import android.content.ClipData
