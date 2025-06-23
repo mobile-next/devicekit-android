@@ -5,7 +5,18 @@ that is not possible through adb-shell alone.
 
 ## Features
 
-- Control clipboard content
+- Control clipboard content with support for utf8
+
+## Installing
+
+Simply download the latest release from [github releases](https://github.com/mobile-next/devicekit-android/releases), install the package onto your device, and see **Usage** section below for commands.
+
+You may also just automate it all by running the copy-pasting the following script onto your terminal:
+```bash
+curl -s -O -J -L https://github.com/mobile-next/devicekit-android/releases/download/0.0.10/mobilenext-devicekit.apk
+
+adb install -r mobilenext-devicekit.apk
+```
 
 ## Usage
 
