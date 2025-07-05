@@ -24,93 +24,112 @@ import kotlin.system.exitProcess
 class MjpegServer {
     companion object {
         private const val TAG = "MjpegServer"
+        private const val BOUNDARY = "BoundaryString"
         
         @JvmStatic
         fun main(args: Array<String>) {
             try {
                 val server = MjpegServer()
-                server.captureScreenshot()
+                server.startMjpegStream()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to capture screenshot", e)
+                Log.e(TAG, "Failed to start MJPEG stream", e)
                 System.err.println("Error: ${e.message}")
                 exitProcess(1)
             }
         }
     }
 
-    private fun captureScreenshot() {
+    private fun startMjpegStream() {
         try {
-            val startTime = System.currentTimeMillis()
+            // Output initial HTTP headers for MJPEG stream
+            // gilm: outputMjpegHeaders()
             
-            // Get display information
-            val displayInfo = getDisplayInfo()
-            Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}")
-            
-            // Create ImageReader for capturing raw pixels
-            val imageReader = ImageReader.newInstance(
-                displayInfo.width, 
-                displayInfo.height, 
-                PixelFormat.RGBA_8888, 
-                1
-            )
-            
-            val captureComplete = CountDownLatch(1)
-            var jpegData: ByteArray? = null
-            
-            // Prepare the main thread looper if needed
-            if (Looper.myLooper() == null) {
-                Looper.prepare()
-            }
-            
-            // Set up image capture callback with manual processing
-            imageReader.setOnImageAvailableListener({ reader ->
-                try {
-                    val image = reader.acquireLatestImage()
-                    if (image != null) {
-                        jpegData = convertImageToJpeg(image)
-                        image.close()
-                        captureComplete.countDown()
-                        Log.d(TAG, "Image captured and converted to JPEG: ${jpegData?.size} bytes")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing image", e)
-                    captureComplete.countDown()
-                }
-            }, Handler(Looper.myLooper()!!))
-            
-            // Create virtual display to capture screen
-            val virtualDisplay = createVirtualDisplay(
-                displayInfo.width,
-                displayInfo.height, 
-                displayInfo.dpi,
-                imageReader.surface
-            )
-            
-            // Wait for capture (max 5 seconds)
-            val captured = captureComplete.await(5, TimeUnit.SECONDS)
-            
-            // Cleanup
-            virtualDisplay?.release()
-            imageReader.close()
-            
-            val duration = System.currentTimeMillis() - startTime
-            
-            if (captured && jpegData != null) {
-                // Output JPEG data
-                System.out.write(jpegData!!)
-                System.out.flush()
-                
-                Log.d(TAG, "JPEG screenshot captured successfully: ${displayInfo.width}x${displayInfo.height} (took ${duration}ms)")
-            } else {
-                System.err.println("Error: Failed to capture screenshot - timeout or no data")
-                exitProcess(1)
-            }
+            // Start continuous streaming
+            streamFrames()
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error capturing screenshot", e)
+            Log.e(TAG, "Error in MJPEG stream", e)
             System.err.println("Error: ${e.message}")
             exitProcess(1)
         }
+    }
+    
+    private fun outputMjpegHeaders() {
+        val headers = """Content-Type: multipart/x-mixed-replace; boundary=$BOUNDARY
+Cache-Control: no-cache
+Connection: close
+
+"""
+        System.out.print(headers)
+        System.out.flush()
+    }
+    
+    private fun streamFrames() {
+        val displayInfo = getDisplayInfo()
+        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}")
+        
+        // Create a background thread with looper for image callbacks
+        val handlerThread = HandlerThread("ScreenCapture")
+        handlerThread.start()
+        val backgroundHandler = Handler(handlerThread.looper)
+        
+        // Create ImageReader for capturing raw pixels
+        val imageReader = ImageReader.newInstance(
+            displayInfo.width, 
+            displayInfo.height, 
+            PixelFormat.RGBA_8888, 
+            1
+        )
+        
+        // Set up image capture callback with background handler
+        imageReader.setOnImageAvailableListener({ reader ->
+            try {
+                val image = reader.acquireLatestImage()
+                if (image != null) {
+                    val jpegData = convertImageToJpeg(image)
+                    outputMjpegFrame(jpegData)
+                    image.close()
+                    Log.d(TAG, "Frame output: ${jpegData.size} bytes")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing frame", e)
+            }
+        }, backgroundHandler)
+        
+        // Create virtual display to capture screen
+        val virtualDisplay = createVirtualDisplay(
+            displayInfo.width,
+            displayInfo.height, 
+            displayInfo.dpi,
+            imageReader.surface
+        )
+        
+        if (virtualDisplay == null) {
+            System.err.println("Error: Failed to create virtual display")
+            exitProcess(1)
+        }
+        
+        // Keep streaming (this will run indefinitely)
+        try {
+            while (true) {
+                Thread.sleep(33) // ~30 FPS
+            }
+        } finally {
+            virtualDisplay.release()
+            imageReader.close()
+            handlerThread.quitSafely()
+        }
+    }
+    
+    private fun outputMjpegFrame(jpegData: ByteArray) {
+        val frameHeaders = "--$BOUNDARY\r\n" +
+                          "Content-type: image/jpeg\r\n" +
+                          "Content-Length: ${jpegData.size}\r\n" +
+                          "\r\n"
+        System.out.print(frameHeaders)
+        System.out.write(jpegData)
+        System.out.print("\r\n")
+        System.out.flush()
     }
     
     private fun convertImageToJpeg(image: Image): ByteArray {
