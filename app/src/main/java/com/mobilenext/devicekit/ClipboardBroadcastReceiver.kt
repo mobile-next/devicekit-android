@@ -61,7 +61,7 @@ class ClipboardBroadcastReceiver : BroadcastReceiver() {
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clipData = ClipData.newPlainText("Clipboard Text", _text)
             clipboardManager.setPrimaryClip(clipData)
-	    Log.i(TAG, "Clipboard set with text: $_text")
+            Log.i(TAG, "Clipboard set with text: $_text")
             Log.d(TAG, "Successfully set clipboard text")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set clipboard text", e)

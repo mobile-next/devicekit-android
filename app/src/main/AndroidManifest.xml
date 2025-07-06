@@ -18,14 +18,13 @@
 
         <!-- BroadcastReceiver for clipboard operations -->
         <receiver
-            android:name="com.mobilenext.devicekit.ClipboardBroadcastReceiver"
+            android:name=".ClipboardBroadcastReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="clipper.set" />
             </intent-filter>
         </receiver>
-
 
     </application>
 
