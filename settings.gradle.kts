@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "mobile-next-clipboard"
+rootProject.name = "mobile-next-devicekit"
 include(":app")
  
