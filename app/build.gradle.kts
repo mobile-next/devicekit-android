@@ -18,8 +18,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = true
+            isDebuggable = false  // Disable debugging to allow ProGuard optimizations
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
