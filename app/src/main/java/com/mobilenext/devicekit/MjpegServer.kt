@@ -178,36 +178,23 @@ Connection: close
         surface: Surface
     ): VirtualDisplay? {
         return try {
-            // Access DisplayManager through reflection
-            val serviceManagerClass = Class.forName("android.os.ServiceManager")
-            val getServiceMethod = serviceManagerClass.getMethod("getService", String::class.java)
-            val displayService = getServiceMethod.invoke(null, "display")
-
-            val displayManagerStubClass =
-                Class.forName("android.hardware.display.IDisplayManager\$Stub")
-            val asInterfaceMethod =
-                displayManagerStubClass.getMethod("asInterface", IBinder::class.java)
-            val displayManager = asInterfaceMethod.invoke(null, displayService)
-
-            // Use the working createVirtualDisplay method
-            val createVirtualDisplayMethod = android.hardware.display.DisplayManager::class.java
-                .getMethod(
-                    "createVirtualDisplay",
-                    String::class.java,
-                    Int::class.javaPrimitiveType,
-                    Int::class.javaPrimitiveType,
-                    Int::class.javaPrimitiveType,
-                    Surface::class.java
-                )
-
-            createVirtualDisplayMethod.invoke(
-                null,
+            // Get Application context through reflection
+            val activityThreadClass = Class.forName("android.app.ActivityThread")
+            val currentApplicationMethod = activityThreadClass.getMethod("currentApplication")
+            val application = currentApplicationMethod.invoke(null) as android.app.Application
+            
+            // Get DisplayManager from application context
+            val displayManager = application.getSystemService("display") as DisplayManager
+            
+            // Create virtual display using the public method
+            displayManager.createVirtualDisplay(
                 "screenshot",
                 width,
                 height,
-                0,
-                surface
-            ) as VirtualDisplay
+                dpi,
+                surface,
+                0
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create virtual display", e)
             null
