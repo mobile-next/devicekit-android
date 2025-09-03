@@ -39,8 +39,16 @@ class MjpegServer {
         }
     }
 
+    private val shutdownLatch = CountDownLatch(1)
+
     private fun startMjpegStream() {
         try {
+            // Register shutdown hook for graceful termination
+            Runtime.getRuntime().addShutdownHook(Thread {
+                Log.d(TAG, "Shutdown hook triggered")
+                shutdown()
+            })
+
             // Output initial HTTP headers for MJPEG stream
             // gilm: outputMjpegHeaders()
 
@@ -109,16 +117,18 @@ Connection: close
             exitProcess(1)
         }
 
-        // Keep streaming (this will run indefinitely)
+        // Keep streaming until shutdown is requested
         try {
-            while (true) {
-                Thread.sleep(33) // ~30 FPS
-            }
+            shutdownLatch.await()
         } finally {
             virtualDisplay.release()
             imageReader.close()
             handlerThread.quitSafely()
         }
+    }
+
+    private fun shutdown() {
+        shutdownLatch.countDown()
     }
 
     private fun outputMjpegFrame(jpegData: ByteArray) {
