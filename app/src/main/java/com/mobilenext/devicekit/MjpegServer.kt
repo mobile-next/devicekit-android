@@ -83,16 +83,18 @@ Connection: close
 
         // Set up image capture callback with background handler
         imageReader.setOnImageAvailableListener({ reader ->
+            var image: Image? = null
             try {
-                val image = reader.acquireLatestImage()
+                image = reader.acquireLatestImage()
                 if (image != null) {
                     val jpegData = convertImageToJpeg(image)
                     outputMjpegFrame(jpegData)
-                    image.close()
                     Log.d(TAG, "Frame output: ${jpegData.size} bytes")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing frame", e)
+            } finally {
+                image?.close()
             }
         }, backgroundHandler)
 
