@@ -21,7 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
-class MjpegServer {
+class MjpegServer(private val quality: Int = 90, private val scale: Float = 1.0f) {
     companion object {
         private const val TAG = "MjpegServer"
         private const val BOUNDARY = "BoundaryString"
@@ -29,13 +29,40 @@ class MjpegServer {
         @JvmStatic
         fun main(args: Array<String>) {
             try {
-                val server = MjpegServer()
+                val (quality, scale) = parseArguments(args)
+                val server = MjpegServer(quality, scale)
                 server.startMjpegStream()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start MJPEG stream", e)
                 System.err.println("Error: ${e.message}")
                 exitProcess(1)
             }
+        }
+
+        private fun parseArguments(args: Array<String>): Pair<Int, Float> {
+            var quality = 90
+            var scale = 1.0f
+            
+            var i = 0
+            while (i < args.size) {
+                when (args[i]) {
+                    "--quality" -> {
+                        if (i + 1 < args.size) {
+                            quality = args[i + 1].toIntOrNull()?.coerceIn(1, 100) ?: 90
+                            i++
+                        }
+                    }
+                    "--scale" -> {
+                        if (i + 1 < args.size) {
+                            scale = args[i + 1].toFloatOrNull()?.coerceIn(0.1f, 2.0f) ?: 1.0f
+                            i++
+                        }
+                    }
+                }
+                i++
+            }
+            
+            return Pair(quality, scale)
         }
     }
 
@@ -74,7 +101,9 @@ Connection: close
 
     private fun streamFrames() {
         val displayInfo = getDisplayInfo()
-        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}")
+        val scaledWidth = (displayInfo.width * scale).toInt()
+        val scaledHeight = (displayInfo.height * scale).toInt()
+        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}, scaled: ${scaledWidth}x${scaledHeight}, quality: $quality")
 
         // Create a background thread with looper for image callbacks
         val handlerThread = HandlerThread("ScreenCapture")
@@ -95,7 +124,7 @@ Connection: close
             try {
                 image = reader.acquireLatestImage()
                 if (image != null) {
-                    val jpegData = convertImageToJpeg(image)
+                    val jpegData = convertImageToJpeg(image, quality, scale)
                     outputMjpegFrame(jpegData)
                     Log.d(TAG, "Frame output: ${jpegData.size} bytes")
                 }
@@ -144,7 +173,7 @@ Connection: close
         System.out.flush()
     }
 
-    private fun convertImageToJpeg(image: Image): ByteArray {
+    private fun convertImageToJpeg(image: Image, quality: Int, scale: Float): ByteArray {
         val planes = image.planes
         val buffer = planes[0].buffer
         val pixelStride = planes[0].pixelStride
@@ -159,23 +188,37 @@ Connection: close
         )
         bitmap.copyPixelsFromBuffer(buffer)
 
-        // Crop bitmap if there's padding
-        val finalBitmap = if (rowPadding == 0) {
+        // Remove row padding if present
+        val paddingRemovedBitmap = if (rowPadding == 0) {
             bitmap
         } else {
             Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
         }
+        
+        // Scale bitmap if needed
+        val finalBitmap = if (scale != 1.0f) {
+            val scaledWidth = (image.width * scale).toInt()
+            val scaledHeight = (image.height * scale).toInt()
+            Bitmap.createScaledBitmap(paddingRemovedBitmap, scaledWidth, scaledHeight, true)
+        } else {
+            paddingRemovedBitmap
+        }
 
         // Convert to JPEG
         val outputStream = ByteArrayOutputStream()
-        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+        finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
         val jpegData = outputStream.toByteArray()
 
         // Cleanup
         if (finalBitmap != bitmap) {
             bitmap.recycle()
         }
-        finalBitmap.recycle()
+        if (paddingRemovedBitmap != bitmap && paddingRemovedBitmap != finalBitmap) {
+            paddingRemovedBitmap.recycle()
+        }
+        if (finalBitmap != paddingRemovedBitmap) {
+            finalBitmap.recycle()
+        }
         outputStream.close()
 
         return jpegData
@@ -188,23 +231,37 @@ Connection: close
         surface: Surface
     ): VirtualDisplay? {
         return try {
-            // Get Application context through reflection
-            val activityThreadClass = Class.forName("android.app.ActivityThread")
-            val currentApplicationMethod = activityThreadClass.getMethod("currentApplication")
-            val application = currentApplicationMethod.invoke(null) as android.app.Application
-            
-            // Get DisplayManager from application context
-            val displayManager = application.getSystemService("display") as DisplayManager
-            
-            // Create virtual display using the public method
-            displayManager.createVirtualDisplay(
+            // Access DisplayManager through reflection
+            val serviceManagerClass = Class.forName("android.os.ServiceManager")
+            val getServiceMethod = serviceManagerClass.getMethod("getService", String::class.java)
+            val displayService = getServiceMethod.invoke(null, "display")
+
+            val displayManagerStubClass =
+                Class.forName("android.hardware.display.IDisplayManager\$Stub")
+            val asInterfaceMethod =
+                displayManagerStubClass.getMethod("asInterface", IBinder::class.java)
+            val displayManager = asInterfaceMethod.invoke(null, displayService)
+
+            // Use the working createVirtualDisplay method
+            val createVirtualDisplayMethod = android.hardware.display.DisplayManager::class.java
+                .getMethod(
+                    "createVirtualDisplay",
+                    String::class.java,
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                    Surface::class.java
+                )
+
+            createVirtualDisplayMethod.invoke(
+                null,
                 "screenshot",
                 width,
                 height,
-                dpi,
-                surface,
-                0
-            )
+                0,
+                surface
+            ) as VirtualDisplay
+            
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create virtual display", e)
             null
