@@ -21,10 +21,15 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
-class MjpegServer(private val quality: Int = 90, private val scale: Float = 1.0f) {
+class MjpegServer(quality: Int, scale: Float) {
+    private val quality: Int = quality
+    private val scale: Float = scale
+    
     companion object {
         private const val TAG = "MjpegServer"
         private const val BOUNDARY = "BoundaryString"
+        private const val DEFAULT_QUALITY = 80
+        private const val DEFAULT_SCALE = 1.0f
 
         @JvmStatic
         fun main(args: Array<String>) {
@@ -40,21 +45,21 @@ class MjpegServer(private val quality: Int = 90, private val scale: Float = 1.0f
         }
 
         private fun parseArguments(args: Array<String>): Pair<Int, Float> {
-            var quality = 90
-            var scale = 1.0f
+            var quality = DEFAULT_QUALITY
+            var scale = DEFAULT_SCALE
             
             var i = 0
             while (i < args.size) {
                 when (args[i]) {
                     "--quality" -> {
                         if (i + 1 < args.size) {
-                            quality = args[i + 1].toIntOrNull()?.coerceIn(1, 100) ?: 90
+                            quality = args[i + 1].toIntOrNull()?.coerceIn(1, 100) ?: DEFAULT_QUALITY
                             i++
                         }
                     }
                     "--scale" -> {
                         if (i + 1 < args.size) {
-                            scale = args[i + 1].toFloatOrNull()?.coerceIn(0.1f, 2.0f) ?: 1.0f
+                            scale = args[i + 1].toFloatOrNull()?.coerceIn(0.1f, 2.0f) ?: DEFAULT_SCALE
                             i++
                         }
                     }
@@ -124,7 +129,7 @@ Connection: close
             try {
                 image = reader.acquireLatestImage()
                 if (image != null) {
-                    val jpegData = convertImageToJpeg(image, quality, scale)
+                    val jpegData = ImageUtils.convertToJpeg(image, quality, scale)
                     outputMjpegFrame(jpegData)
                     Log.d(TAG, "Frame output: ${jpegData.size} bytes")
                 }
@@ -173,56 +178,6 @@ Connection: close
         System.out.flush()
     }
 
-    private fun convertImageToJpeg(image: Image, quality: Int, scale: Float): ByteArray {
-        val planes = image.planes
-        val buffer = planes[0].buffer
-        val pixelStride = planes[0].pixelStride
-        val rowStride = planes[0].rowStride
-        val rowPadding = rowStride - pixelStride * image.width
-
-        // Create bitmap from image data
-        val bitmap = Bitmap.createBitmap(
-            image.width + rowPadding / pixelStride,
-            image.height,
-            Bitmap.Config.ARGB_8888
-        )
-        bitmap.copyPixelsFromBuffer(buffer)
-
-        // Remove row padding if present
-        val paddingRemovedBitmap = if (rowPadding == 0) {
-            bitmap
-        } else {
-            Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
-        }
-        
-        // Scale bitmap if needed
-        val finalBitmap = if (scale != 1.0f) {
-            val scaledWidth = (image.width * scale).toInt()
-            val scaledHeight = (image.height * scale).toInt()
-            Bitmap.createScaledBitmap(paddingRemovedBitmap, scaledWidth, scaledHeight, true)
-        } else {
-            paddingRemovedBitmap
-        }
-
-        // Convert to JPEG
-        val outputStream = ByteArrayOutputStream()
-        finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
-        val jpegData = outputStream.toByteArray()
-
-        // Cleanup
-        if (finalBitmap != bitmap) {
-            bitmap.recycle()
-        }
-        if (paddingRemovedBitmap != bitmap && paddingRemovedBitmap != finalBitmap) {
-            paddingRemovedBitmap.recycle()
-        }
-        if (finalBitmap != paddingRemovedBitmap) {
-            finalBitmap.recycle()
-        }
-        outputStream.close()
-
-        return jpegData
-    }
 
     private fun createVirtualDisplay(
         width: Int,
