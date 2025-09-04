@@ -21,21 +21,53 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
-class MjpegServer {
+class MjpegServer(quality: Int, scale: Float) {
+    private val quality: Int = quality
+    private val scale: Float = scale
+    
     companion object {
         private const val TAG = "MjpegServer"
         private const val BOUNDARY = "BoundaryString"
+        private const val DEFAULT_QUALITY = 80
+        private const val DEFAULT_SCALE = 1.0f
 
         @JvmStatic
         fun main(args: Array<String>) {
             try {
-                val server = MjpegServer()
+                val (quality, scale) = parseArguments(args)
+                val server = MjpegServer(quality, scale)
                 server.startMjpegStream()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start MJPEG stream", e)
                 System.err.println("Error: ${e.message}")
                 exitProcess(1)
             }
+        }
+
+        private fun parseArguments(args: Array<String>): Pair<Int, Float> {
+            var quality = DEFAULT_QUALITY
+            var scale = DEFAULT_SCALE
+            
+            var i = 0
+            while (i < args.size) {
+                when (args[i]) {
+                    "--quality" -> {
+                        if (i + 1 < args.size) {
+                            quality = args[i + 1].toIntOrNull()?.coerceIn(1, 100) ?: DEFAULT_QUALITY
+                            i++
+                        }
+                    }
+                    "--scale" -> {
+                        if (i + 1 < args.size) {
+                            scale = args[i + 1].toFloatOrNull()?.coerceIn(0.1f, 2.0f) ?: DEFAULT_SCALE
+                            i++
+                        }
+                    }
+                }
+                i++
+            }
+            
+            return Pair(quality, scale)
         }
     }
 
@@ -74,7 +106,9 @@ Connection: close
 
     private fun streamFrames() {
         val displayInfo = getDisplayInfo()
-        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}")
+        val scaledWidth = (displayInfo.width * scale).toInt()
+        val scaledHeight = (displayInfo.height * scale).toInt()
+        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}, scaled: ${scaledWidth}x${scaledHeight}, quality: $quality")
 
         // Create a background thread with looper for image callbacks
         val handlerThread = HandlerThread("ScreenCapture")
@@ -95,7 +129,7 @@ Connection: close
             try {
                 image = reader.acquireLatestImage()
                 if (image != null) {
-                    val jpegData = convertImageToJpeg(image)
+                    val jpegData = ImageUtils.convertToJpeg(image, quality, scale)
                     outputMjpegFrame(jpegData)
                     Log.d(TAG, "Frame output: ${jpegData.size} bytes")
                 }
@@ -144,42 +178,6 @@ Connection: close
         System.out.flush()
     }
 
-    private fun convertImageToJpeg(image: Image): ByteArray {
-        val planes = image.planes
-        val buffer = planes[0].buffer
-        val pixelStride = planes[0].pixelStride
-        val rowStride = planes[0].rowStride
-        val rowPadding = rowStride - pixelStride * image.width
-
-        // Create bitmap from image data
-        val bitmap = Bitmap.createBitmap(
-            image.width + rowPadding / pixelStride,
-            image.height,
-            Bitmap.Config.ARGB_8888
-        )
-        bitmap.copyPixelsFromBuffer(buffer)
-
-        // Crop bitmap if there's padding
-        val finalBitmap = if (rowPadding == 0) {
-            bitmap
-        } else {
-            Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
-        }
-
-        // Convert to JPEG
-        val outputStream = ByteArrayOutputStream()
-        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
-        val jpegData = outputStream.toByteArray()
-
-        // Cleanup
-        if (finalBitmap != bitmap) {
-            bitmap.recycle()
-        }
-        finalBitmap.recycle()
-        outputStream.close()
-
-        return jpegData
-    }
 
     private fun createVirtualDisplay(
         width: Int,
@@ -218,6 +216,7 @@ Connection: close
                 0,
                 surface
             ) as VirtualDisplay
+            
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create virtual display", e)
             null
