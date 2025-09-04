@@ -14,7 +14,7 @@ Simply download the latest release from [github releases](https://github.com/mob
 
 You may also just automate it all by running the copy-pasting the following script onto your terminal:
 ```bash
-curl -s -O -J -L https://github.com/mobile-next/devicekit-android/releases/download/0.0.13/mobilenext-devicekit.apk
+curl -s -O -J -L https://github.com/mobile-next/devicekit-android/releases/download/1.1.13/mobilenext-devicekit.apk
 
 adb install -r mobilenext-devicekit.apk
 ```
