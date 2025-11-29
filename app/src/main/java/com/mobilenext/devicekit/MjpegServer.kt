@@ -19,6 +19,12 @@ class MjpegServer(private val quality: Int, private val scale: Float, private va
         private const val DEFAULT_SCALE = 1.0f
         private const val DEFAULT_FPS = 30
 
+        /**
+         * Program entry point that parses command-line options, creates an MjpegServer, and starts streaming.
+         *
+         * Exits the process with code 1 and logs an error if initialization fails.
+         *
+         * @param args Command-line arguments. Recognized options: `--quality=<0-100>`, `--scale=<positive float>`, `--fps=<1-60>`.
         @JvmStatic
         fun main(args: Array<String>) {
             try {
@@ -32,6 +38,18 @@ class MjpegServer(private val quality: Int, private val scale: Float, private va
             }
         }
 
+        /**
+         * Parse command-line options for MJPEG quality, scale, and frames-per-second.
+         *
+         * Recognizes the `--quality`, `--scale`, and `--fps` options; each option expects a following value.
+         * If an option is missing or its value is non-numeric or out of range, the corresponding default is used.
+         *
+         * @param args The command-line arguments to parse.
+         * @return A `Triple` containing:
+         *         - first: `quality` in the range 1..100,
+         *         - second: `scale` in the range 0.1f..2.0f,
+         *         - third: `fps` in the range 1..60.
+         */
         private fun parseArguments(args: Array<String>): Triple<Int, Float, Int> {
             var quality = DEFAULT_QUALITY
             var scale = DEFAULT_SCALE
@@ -68,6 +86,13 @@ class MjpegServer(private val quality: Int, private val scale: Float, private va
 
     private val shutdownLatch = CountDownLatch(1)
 
+    /**
+     * Starts the MJPEG streaming lifecycle and registers a JVM shutdown hook for graceful termination.
+     *
+     * Registers a shutdown hook that triggers `shutdown()` when the JVM exits, then begins continuous
+     * frame capture and streaming by invoking `streamFrames()`. If an unexpected exception occurs,
+     * the error is logged to both logcat and stderr and the process exits with code 1.
+     */
     private fun start() {
         try {
             // Register shutdown hook for graceful termination
@@ -89,6 +114,11 @@ class MjpegServer(private val quality: Int, private val scale: Float, private va
         }
     }
 
+    /**
+     * Writes the initial multipart MJPEG HTTP headers to standard output and flushes them.
+     *
+     * This emits the Content-Type (with boundary), Cache-Control, and Connection headers followed by a blank line to begin the multipart stream.
+     */
     private fun outputMjpegHeaders() {
         val headers = """Content-Type: multipart/x-mixed-replace; boundary=$BOUNDARY
 Cache-Control: no-cache
@@ -99,6 +129,11 @@ Connection: close
         System.out.flush()
     }
 
+    /**
+     * Captures the device screen, encodes frames as JPEG, and streams them as MJPEG multipart frames to stdout until shutdown.
+     *
+     * Starts a background thread and an ImageReader-backed virtual display to receive frames, processes each available image into a JPEG, writes framed output, and blocks until a shutdown is requested. Releases the virtual display, closes the ImageReader, and stops the background thread on exit.
+     */
     private fun streamFrames() {
         val displayInfo = DisplayUtils.getDisplayInfo()
         val scaledWidth = (displayInfo.width * scale).toInt()
@@ -158,10 +193,20 @@ Connection: close
         }
     }
 
+    /**
+     * Signals the server to stop streaming and causes the streaming loop to exit.
+     */
     private fun shutdown() {
         shutdownLatch.countDown()
     }
 
+    /**
+     * Writes a JPEG image as a single multipart MJPEG frame to standard output.
+     *
+     * Writes the multipart boundary and headers, the provided JPEG bytes, and a trailing CRLF, then flushes stdout. On I/O failure (for example a broken pipe from a disconnected client) the server shutdown is initiated.
+     *
+     * @param jpegData JPEG-encoded image bytes to emit as an MJPEG frame.
+     */
     private fun outputMjpegFrame(jpegData: ByteArray) {
         try {
             val frameHeaders = "--$BOUNDARY\r\n" +
@@ -179,4 +224,3 @@ Connection: close
         }
     }
 }
-

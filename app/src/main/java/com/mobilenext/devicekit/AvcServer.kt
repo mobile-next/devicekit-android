@@ -23,7 +23,13 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         private const val DEFAULT_FPS = 30
         private const val MIN_FPS = 1
         private const val MAX_FPS = 60
-        private const val I_FRAME_INTERVAL = 1  // 1 second
+        private const val I_FRAME_INTERVAL = 1  /**
+         * Program entry point that parses command-line arguments, creates an AvcServer, and starts streaming.
+         *
+         * On startup failure the function logs the error, prints the message to stderr, and exits the process with status 1.
+         *
+         * @param args Command-line arguments supporting `--bitrate <int>`, `--scale <float>`, and `--fps <int>`.
+         */
 
         @JvmStatic
         fun main(args: Array<String>) {
@@ -38,6 +44,18 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
             }
         }
 
+        /**
+         * Parses command-line arguments for bitrate, scale, and fps and returns their validated values.
+         *
+         * Recognizes `--bitrate <value>`, `--scale <value>`, and `--fps <value>`. Missing or invalid
+         * `--bitrate` and `--scale` values fall back to defaults; `--bitrate` is coerced to at least 100000
+         * and `--scale` is coerced into the range 0.1f–2.0f. `--fps` must be an integer between MIN_FPS and
+         * MAX_FPS.
+         *
+         * @param args The command-line arguments to parse.
+         * @return A Triple of `(bitrate, scale, fps)` after validation and coercion.
+         * @throws IllegalArgumentException if a provided `--fps` value is not an integer or is out of range.
+         */
         private fun parseArguments(args: Array<String>): Triple<Int, Float, Int> {
             var bitrate = DEFAULT_BITRATE
             var scale = DEFAULT_SCALE
@@ -81,6 +99,12 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
 
     private val shutdownLatch = CountDownLatch(1)
 
+    /**
+     * Registers a JVM shutdown hook and starts the AVC streaming process.
+     *
+     * Initiates the encoder and stream lifecycle; if startup or streaming fails, logs the error,
+     * writes the error message to standard error, and terminates the process with exit code 1.
+     */
     private fun start() {
         try {
             // Register shutdown hook for graceful termination
@@ -99,10 +123,25 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         }
     }
 
+    /**
+     * Signals the server to shut down by releasing the internal shutdown latch.
+     *
+     * Decrements the latch so threads waiting for shutdown can proceed and the encoding loop can exit.
+     */
     private fun shutdown() {
         shutdownLatch.countDown()
     }
 
+    /**
+     * Sets up an H.264 (AVC) encoder for the current display and streams the encoded frames to standard output.
+     *
+     * The function obtains display dimensions, applies scaling, validates codec capabilities, configures
+     * and starts a MediaCodec encoder with an input Surface, creates a virtual display that renders to
+     * that surface, then enters a loop that writes encoded H.264 data directly to stdout until shutdown.
+     *
+     * @throws IllegalArgumentException if the scaled video dimensions are invalid (width or height <= 0)
+     *         or if the scaled dimensions exceed the codec's supported size range. 
+     */
     private fun streamAvcFrames() {
         val displayInfo = DisplayUtils.getDisplayInfo()
         val scaledWidth = (displayInfo.width * scale).toInt()

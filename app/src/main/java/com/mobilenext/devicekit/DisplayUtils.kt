@@ -21,8 +21,9 @@ object DisplayUtils {
     )
 
     /**
-     * Get display information for the primary display using reflection.
-     * Falls back to reasonable defaults if reflection fails.
+     * Retrieve primary display metrics via reflection, falling back to safe defaults if retrieval fails.
+     *
+     * @return DisplayInfo containing width (pixels), height (pixels), dpi (dots per inch), and rotation (Surface rotation constant). Fallback values are returned if reflective access fails.
      */
     fun getDisplayInfo(): DisplayInfo {
         return try {
@@ -61,15 +62,14 @@ object DisplayUtils {
     }
 
     /**
-     * Create a virtual display using reflection.
-     * This allows screen capture without needing MediaProjection API.
+     * Creates a virtual display that renders to the provided surface.
      *
-     * @param name Display name for identification
-     * @param width Display width in pixels
-     * @param height Display height in pixels
-     * @param dpi Display density
-     * @param surface Output surface (from ImageReader or MediaCodec)
-     * @return VirtualDisplay instance or null on failure
+     * @param name Display name for identification.
+     * @param width Display width in pixels.
+     * @param height Display height in pixels.
+     * @param dpi Display density in dots-per-inch.
+     * @param surface Output Surface that will receive rendered frames (for example, from ImageReader or MediaCodec).
+     * @return The created `VirtualDisplay`, or `null` if creation failed.
      */
     fun createVirtualDisplay(
         name: String,
