@@ -176,7 +176,6 @@ Connection: close
             // Pipe broken - client disconnected
             Log.d(TAG, "Output pipe broken, shutting down")
             shutdown()
-            exitProcess(0)
         }
     }
 }

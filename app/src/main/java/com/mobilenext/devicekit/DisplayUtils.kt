@@ -39,6 +39,7 @@ object DisplayUtils {
             // Get display info
             val getDisplayInfoMethod = displayManager.javaClass.getMethod("getDisplayInfo", Int::class.java)
             val displayInfo = getDisplayInfoMethod.invoke(displayManager, Display.DEFAULT_DISPLAY)
+                ?: throw IllegalStateException("DisplayInfo is null")
 
             // Extract width, height, DPI, and rotation from DisplayInfo
             val logicalWidthField = displayInfo.javaClass.getField("logicalWidth")
