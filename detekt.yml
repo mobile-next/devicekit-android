@@ -1,0 +1,8 @@
+build:
+  maxIssues: -1  # Don't fail the build, just report issues
+
+console-reports:
+  active: true
+
+output-reports:
+  active: false
