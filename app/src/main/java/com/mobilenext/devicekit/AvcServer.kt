@@ -257,30 +257,27 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
 
                             // Track presentation timestamps to calculate actual frame rate
                             if (frameType == "config") {
-                                Log.d(TAG, "SPS/PPS (codec config): ${bufferInfo.size} bytes, pts=${bufferInfo.presentationTimeUs}µs")
                                 // Parse first few bytes to check for VUI
                                 outputBuffer.position(bufferInfo.offset)
                                 val firstBytes = ByteArray(minOf(20, bufferInfo.size))
                                 outputBuffer.get(firstBytes)
-                                Log.d(TAG, "First bytes of SPS/PPS: ${firstBytes.joinToString(" ") { "%02x".format(it) }}")
                             } else {
                                 if (frameCount == 0) {
                                     firstPts = bufferInfo.presentationTimeUs
-                                    Log.d(TAG, "First frame PTS: ${firstPts}µs")
                                 }
 
                                 if (frameCount > 0 && frameCount % 60 == 0) {
                                     val deltaPts = bufferInfo.presentationTimeUs - lastPts
                                     val totalTime = (bufferInfo.presentationTimeUs - firstPts) / 1_000_000.0
                                     val avgFps = frameCount / totalTime
-                                    Log.d(TAG, "Frame $frameCount: pts=${bufferInfo.presentationTimeUs}µs, delta=${deltaPts}µs, avg_fps=%.2f".format(avgFps))
+                                    // Log.d(TAG, "Frame $frameCount: pts=${bufferInfo.presentationTimeUs}µs, delta=${deltaPts}µs, avg_fps=%.2f".format(avgFps))
                                 }
 
                                 lastPts = bufferInfo.presentationTimeUs
                                 frameCount++
                             }
 
-                            Log.v(TAG, "AVC $frameType: ${bufferInfo.size} bytes")
+                            // Log.v(TAG, "AVC $frameType: ${bufferInfo.size} bytes")
                         }
 
                         // Release buffer back to codec (enables backpressure when slow)
