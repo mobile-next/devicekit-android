@@ -1,30 +1,16 @@
 package com.mobilenext.devicekit
 
-import android.graphics.Bitmap
 import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.Image
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.Looper
-import android.os.IBinder
 import android.util.Log
-import android.view.Display
-import android.view.Surface
-import java.io.ByteArrayOutputStream
-import java.io.IOException
-import java.lang.reflect.Method
-import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
-class MjpegServer(quality: Int, scale: Float) {
-    private val quality: Int = quality
-    private val scale: Float = scale
-    
+class MjpegServer(private val quality: Int, private val scale: Float) {
     companion object {
         private const val TAG = "MjpegServer"
         private const val BOUNDARY = "BoundaryString"
@@ -36,7 +22,7 @@ class MjpegServer(quality: Int, scale: Float) {
             try {
                 val (quality, scale) = parseArguments(args)
                 val server = MjpegServer(quality, scale)
-                server.startMjpegStream()
+                server.start()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start MJPEG stream", e)
                 System.err.println("Error: ${e.message}")
@@ -47,7 +33,7 @@ class MjpegServer(quality: Int, scale: Float) {
         private fun parseArguments(args: Array<String>): Pair<Int, Float> {
             var quality = DEFAULT_QUALITY
             var scale = DEFAULT_SCALE
-            
+
             var i = 0
             while (i < args.size) {
                 when (args[i]) {
@@ -66,14 +52,14 @@ class MjpegServer(quality: Int, scale: Float) {
                 }
                 i++
             }
-            
+
             return Pair(quality, scale)
         }
     }
 
     private val shutdownLatch = CountDownLatch(1)
 
-    private fun startMjpegStream() {
+    private fun start() {
         try {
             // Register shutdown hook for graceful termination
             Runtime.getRuntime().addShutdownHook(Thread {
@@ -105,7 +91,7 @@ Connection: close
     }
 
     private fun streamFrames() {
-        val displayInfo = getDisplayInfo()
+        val displayInfo = DisplayUtils.getDisplayInfo()
         val scaledWidth = (displayInfo.width * scale).toInt()
         val scaledHeight = (displayInfo.height * scale).toInt()
         Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}, scaled: ${scaledWidth}x${scaledHeight}, quality: $quality")
@@ -141,7 +127,8 @@ Connection: close
         }, backgroundHandler)
 
         // Create virtual display to capture screen
-        val virtualDisplay = createVirtualDisplay(
+        val virtualDisplay = DisplayUtils.createVirtualDisplay(
+            "mjpeg.screen.capture",
             displayInfo.width,
             displayInfo.height,
             displayInfo.dpi,
@@ -177,95 +164,5 @@ Connection: close
         System.out.print("\r\n")
         System.out.flush()
     }
-
-
-    private fun createVirtualDisplay(
-        width: Int,
-        height: Int,
-        dpi: Int,
-        surface: Surface
-    ): VirtualDisplay? {
-        return try {
-            // Access DisplayManager through reflection
-            val serviceManagerClass = Class.forName("android.os.ServiceManager")
-            val getServiceMethod = serviceManagerClass.getMethod("getService", String::class.java)
-            val displayService = getServiceMethod.invoke(null, "display")
-
-            val displayManagerStubClass =
-                Class.forName("android.hardware.display.IDisplayManager\$Stub")
-            val asInterfaceMethod =
-                displayManagerStubClass.getMethod("asInterface", IBinder::class.java)
-            val displayManager = asInterfaceMethod.invoke(null, displayService)
-
-            // Use the working createVirtualDisplay method
-            val createVirtualDisplayMethod = android.hardware.display.DisplayManager::class.java
-                .getMethod(
-                    "createVirtualDisplay",
-                    String::class.java,
-                    Int::class.javaPrimitiveType,
-                    Int::class.javaPrimitiveType,
-                    Int::class.javaPrimitiveType,
-                    Surface::class.java
-                )
-
-            createVirtualDisplayMethod.invoke(
-                null,
-                "screenshot",
-                width,
-                height,
-                0,
-                surface
-            ) as VirtualDisplay
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create virtual display", e)
-            null
-        }
-    }
-
-    private fun getDisplayInfo(): DisplayInfo {
-        try {
-            // Get display manager service
-            val serviceManagerClass = Class.forName("android.os.ServiceManager")
-            val getServiceMethod = serviceManagerClass.getMethod("getService", String::class.java)
-
-            // Get display service
-            val displayService = getServiceMethod.invoke(null, "display") as IBinder
-            val displayManagerClass =
-                Class.forName("android.hardware.display.IDisplayManager\$Stub")
-            val asInterfaceMethod =
-                displayManagerClass.getMethod("asInterface", IBinder::class.java)
-            val displayManager = asInterfaceMethod.invoke(null, displayService)
-
-            // Get display info
-            val getDisplayInfoMethod =
-                displayManager.javaClass.getMethod("getDisplayInfo", Int::class.java)
-            val displayInfo = getDisplayInfoMethod.invoke(displayManager, Display.DEFAULT_DISPLAY)
-
-            // Extract width, height, and rotation from DisplayInfo
-            val logicalWidthField = displayInfo.javaClass.getField("logicalWidth")
-            val logicalHeightField = displayInfo.javaClass.getField("logicalHeight")
-            val logicalDensityDpiField = displayInfo.javaClass.getField("logicalDensityDpi")
-            val rotationField = displayInfo.javaClass.getField("rotation")
-
-            val width = logicalWidthField.getInt(displayInfo)
-            val height = logicalHeightField.getInt(displayInfo)
-            val dpi = logicalDensityDpiField.getInt(displayInfo)
-            val rotation = rotationField.getInt(displayInfo)
-
-            return DisplayInfo(width, height, dpi, rotation)
-
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to get display info via DisplayManager, using fallback", e)
-            return DisplayInfo(1080, 1920, 320, Surface.ROTATION_0)
-        }
-    }
-
-    private data class DisplayInfo(
-        val width: Int,
-        val height: Int,
-        val dpi: Int,
-        val rotation: Int
-    )
 }
 
