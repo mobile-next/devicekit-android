@@ -7,21 +7,23 @@ import android.media.Image
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
 
-class MjpegServer(private val quality: Int, private val scale: Float) {
+class MjpegServer(private val quality: Int, private val scale: Float, private val fps: Int) {
     companion object {
         private const val TAG = "MjpegServer"
         private const val BOUNDARY = "BoundaryString"
         private const val DEFAULT_QUALITY = 80
         private const val DEFAULT_SCALE = 1.0f
+        private const val DEFAULT_FPS = 30
 
         @JvmStatic
         fun main(args: Array<String>) {
             try {
-                val (quality, scale) = parseArguments(args)
-                val server = MjpegServer(quality, scale)
+                val (quality, scale, fps) = parseArguments(args)
+                val server = MjpegServer(quality, scale, fps)
                 server.start()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start MJPEG stream", e)
@@ -30,9 +32,10 @@ class MjpegServer(private val quality: Int, private val scale: Float) {
             }
         }
 
-        private fun parseArguments(args: Array<String>): Pair<Int, Float> {
+        private fun parseArguments(args: Array<String>): Triple<Int, Float, Int> {
             var quality = DEFAULT_QUALITY
             var scale = DEFAULT_SCALE
+            var fps = DEFAULT_FPS
 
             var i = 0
             while (i < args.size) {
@@ -49,11 +52,17 @@ class MjpegServer(private val quality: Int, private val scale: Float) {
                             i++
                         }
                     }
+                    "--fps" -> {
+                        if (i + 1 < args.size) {
+                            fps = args[i + 1].toIntOrNull()?.coerceIn(1, 60) ?: DEFAULT_FPS
+                            i++
+                        }
+                    }
                 }
                 i++
             }
 
-            return Pair(quality, scale)
+            return Triple(quality, scale, fps)
         }
     }
 
@@ -94,7 +103,7 @@ Connection: close
         val displayInfo = DisplayUtils.getDisplayInfo()
         val scaledWidth = (displayInfo.width * scale).toInt()
         val scaledHeight = (displayInfo.height * scale).toInt()
-        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}, scaled: ${scaledWidth}x${scaledHeight}, quality: $quality")
+        Log.d(TAG, "Display info: ${displayInfo.width}x${displayInfo.height}, scaled: ${scaledWidth}x${scaledHeight}, quality: $quality, fps: $fps")
 
         // Create a background thread with looper for image callbacks
         val handlerThread = HandlerThread("ScreenCapture")
@@ -106,7 +115,7 @@ Connection: close
             displayInfo.width,
             displayInfo.height,
             PixelFormat.RGBA_8888,
-            1
+            2
         )
 
         // Set up image capture callback with background handler
@@ -117,7 +126,6 @@ Connection: close
                 if (image != null) {
                     val jpegData = ImageUtils.convertToJpeg(image, quality, scale)
                     outputMjpegFrame(jpegData)
-                    Log.d(TAG, "Frame output: ${jpegData.size} bytes")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing frame", e)
@@ -155,14 +163,21 @@ Connection: close
     }
 
     private fun outputMjpegFrame(jpegData: ByteArray) {
-        val frameHeaders = "--$BOUNDARY\r\n" +
-                "Content-type: image/jpeg\r\n" +
-                "Content-Length: ${jpegData.size}\r\n" +
-                "\r\n"
-        System.out.print(frameHeaders)
-        System.out.write(jpegData)
-        System.out.print("\r\n")
-        System.out.flush()
+        try {
+            val frameHeaders = "--$BOUNDARY\r\n" +
+                    "Content-type: image/jpeg\r\n" +
+                    "Content-Length: ${jpegData.size}\r\n" +
+                    "\r\n"
+            System.out.print(frameHeaders)
+            System.out.write(jpegData)
+            System.out.print("\r\n")
+            System.out.flush()
+        } catch (e: IOException) {
+            // Pipe broken - client disconnected
+            Log.d(TAG, "Output pipe broken, shutting down")
+            shutdown()
+            exitProcess(0)
+        }
     }
 }
 

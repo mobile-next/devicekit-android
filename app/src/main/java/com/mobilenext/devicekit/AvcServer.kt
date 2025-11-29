@@ -10,6 +10,7 @@ import android.view.Display
 import android.view.Surface
 import java.io.FileDescriptor
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.channels.Channels
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
@@ -159,6 +160,9 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             // Use High profile for better VUI support
             setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
+            // Low latency settings
+            setInteger(MediaFormat.KEY_LATENCY, 0)  // Request lowest latency
+            setInteger(MediaFormat.KEY_PRIORITY, 0)  // Realtime priority
         }
 
         Log.d(TAG, "MediaFormat created: $format")
@@ -202,7 +206,7 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         Log.d(TAG, "AVC encoder started")
 
         val bufferInfo = MediaCodec.BufferInfo()
-        val timeout = 10000L  // 10ms timeout (Google's implementation)
+        val timeout = 10000L  // 10ms timeout for lower latency
 
         // Get FileChannel for stdout to write directly from ByteBuffer (zero-copy)
         val stdoutChannel = FileOutputStream(FileDescriptor.out).channel
@@ -233,8 +237,15 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                             outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
 
                             // FileChannel.write() from DirectByteBuffer = zero-copy via DMA
-                            while (outputBuffer.hasRemaining()) {
-                                stdoutChannel.write(outputBuffer)
+                            try {
+                                while (outputBuffer.hasRemaining()) {
+                                    stdoutChannel.write(outputBuffer)
+                                }
+                            } catch (e: IOException) {
+                                // Pipe broken - client disconnected
+                                Log.d(TAG, "Output pipe broken, shutting down")
+                                shutdown()
+                                break
                             }
 
                             // Log frame info
