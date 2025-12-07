@@ -61,13 +61,12 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                     "--fps" -> {
                         if (i + 1 < args.size) {
                             val parsedFps = args[i + 1].toIntOrNull()
-                            if (parsedFps == null) {
-                                throw IllegalArgumentException("Invalid fps value: ${args[i + 1]}. Must be an integer between $MIN_FPS and $MAX_FPS")
+                            fps = if (parsedFps != null && parsedFps >= MIN_FPS && parsedFps <= MAX_FPS) {
+                                parsedFps
+                            } else {
+                                Log.w(TAG, "Invalid fps value: ${args[i + 1]}. Using default: $DEFAULT_FPS")
+                                DEFAULT_FPS
                             }
-                            if (parsedFps < MIN_FPS || parsedFps > MAX_FPS) {
-                                throw IllegalArgumentException("fps value out of range: $parsedFps. Must be between $MIN_FPS and $MAX_FPS")
-                            }
-                            fps = parsedFps
                             i++
                         }
                     }
@@ -163,6 +162,8 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
             // Low latency settings
             setInteger(MediaFormat.KEY_LATENCY, 0)  // Request lowest latency
             setInteger(MediaFormat.KEY_PRIORITY, 0)  // Realtime priority
+            // Repeat previous frame after 100ms to keep stream alive when screen is static
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000L)  // 100ms in microseconds
         }
 
         Log.d(TAG, "MediaFormat created: $format")
@@ -206,7 +207,7 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         Log.d(TAG, "AVC encoder started")
 
         val bufferInfo = MediaCodec.BufferInfo()
-        val timeout = 10000L  // 10ms timeout for lower latency
+        val timeout = -1L  // Block indefinitely until buffer is available
 
         // Get FileChannel for stdout to write directly from ByteBuffer (zero-copy)
         val stdoutChannel = FileOutputStream(FileDescriptor.out).channel
