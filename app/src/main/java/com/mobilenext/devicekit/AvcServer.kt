@@ -61,7 +61,7 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                     "--fps" -> {
                         if (i + 1 < args.size) {
                             val parsedFps = args[i + 1].toIntOrNull()
-                            fps = if (parsedFps != null && parsedFps >= MIN_FPS && parsedFps <= MAX_FPS) {
+                            fps = if (parsedFps != null && parsedFps in MIN_FPS..MAX_FPS) {
                                 parsedFps
                             } else {
                                 Log.w(TAG, "Invalid fps value: ${args[i + 1]}. Using default: $DEFAULT_FPS")
@@ -100,6 +100,33 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
 
     private fun shutdown() {
         shutdownLatch.countDown()
+    }
+
+    private fun cleanupResources(
+        stdoutChannel: java.nio.channels.FileChannel?,
+        codec: MediaCodec?,
+        virtualDisplay: VirtualDisplay?
+    ) {
+        try {
+            stdoutChannel?.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing stdout channel", e)
+        }
+        try {
+            codec?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping codec", e)
+        }
+        try {
+            codec?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing codec", e)
+        }
+        try {
+            virtualDisplay?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing virtual display", e)
+        }
     }
 
     private fun streamAvcFrames() {
@@ -244,16 +271,8 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                                 }
                             } catch (e: IOException) {
                                 // Pipe broken - client disconnected
-                                Log.d(TAG, "Output pipe broken, cleaning up")
-                                // Clean up resources before exiting
-                                try {
-                                    stdoutChannel.close()
-                                    codec.stop()
-                                    codec.release()
-                                    virtualDisplay.release()
-                                } catch (ex: Exception) {
-                                    Log.e(TAG, "Error during cleanup", ex)
-                                }
+                                Log.d(TAG, "Output pipe broken, cleaning up and exiting")
+                                cleanupResources(stdoutChannel, codec, virtualDisplay)
                                 exitProcess(0)
                             }
 
@@ -306,10 +325,7 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
             }
         } finally {
             Log.d(TAG, "Stopping AVC encoder")
-            stdoutChannel.close()
-            codec.stop()
-            codec.release()
-            virtualDisplay.release()
+            cleanupResources(stdoutChannel, codec, virtualDisplay)
         }
     }
 }
