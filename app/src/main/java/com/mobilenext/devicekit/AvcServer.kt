@@ -207,7 +207,7 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         Log.d(TAG, "AVC encoder started")
 
         val bufferInfo = MediaCodec.BufferInfo()
-        val timeout = -1L  // Block indefinitely until buffer is available
+        val timeout = 100_000L  // 100ms timeout for responsive shutdown (matches REPEAT_FRAME_DELAY)
 
         // Get FileChannel for stdout to write directly from ByteBuffer (zero-copy)
         val stdoutChannel = FileOutputStream(FileDescriptor.out).channel
@@ -244,9 +244,17 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                                 }
                             } catch (e: IOException) {
                                 // Pipe broken - client disconnected
-                                Log.d(TAG, "Output pipe broken, shutting down")
-                                shutdown()
-                                break
+                                Log.d(TAG, "Output pipe broken, cleaning up")
+                                // Clean up resources before exiting
+                                try {
+                                    stdoutChannel.close()
+                                    codec.stop()
+                                    codec.release()
+                                    virtualDisplay.release()
+                                } catch (ex: Exception) {
+                                    Log.e(TAG, "Error during cleanup", ex)
+                                }
+                                exitProcess(0)
                             }
 
                             // Log frame info
