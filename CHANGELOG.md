@@ -1,3 +1,10 @@
+## [1.1.5](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.5) (2025-12-07)
+
+* Fixed AVC encoder latency issues with reduced timeout
+* Fixed repeating frames bug, where screen had to change in order for stream to send bytes
+* Fixed proper shutdown and resource cleanup when stdout pipe is broken
+* Fixed AVC stream shutdown when stdout closes
+
 ## [1.1.4](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.4) (2025-11-29)
 
 * Added support for AVC (H.264) codec for screencapture
