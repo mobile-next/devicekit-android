@@ -92,9 +92,9 @@ class ViewTreeDump : Instrumentation() {
             .put("password", node.isPassword)
             .put("selected", node.isSelected)
             .put("visible", node.isVisibleToUser)
-            .put("bounds", JSONObject()
-                .put("left", bounds.left).put("top", bounds.top)
-                .put("right", bounds.right).put("bottom", bounds.bottom))
+            .put("rect", JSONObject()
+                .put("x", bounds.left).put("y", bounds.top)
+                .put("width", bounds.right - bounds.left).put("height", bounds.bottom - bounds.top))
 
         val children = JSONArray()
         for (i in 0 until node.childCount) {
