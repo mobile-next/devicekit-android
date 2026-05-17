@@ -40,6 +40,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: lint-and-detekt
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -68,8 +70,6 @@ jobs:
     - name: Upload to GitHub Release
       if: github.ref_type == 'tag'
       uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
       with:
         name: Version ${{ github.ref_name }}
         files: |
