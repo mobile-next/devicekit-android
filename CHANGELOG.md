@@ -1,3 +1,8 @@
+## [1.2.0](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.0) (2026-05-17)
+
+* Added UI view tree dump service via instrumentation, as a workaround for UIAutomator2 timeouts during animations ([#14](https://github.com/mobile-next/devicekit-android/pull/14))
+* Reduced APK size by ~50% by removing over-broad ProGuard keep rules ([#14](https://github.com/mobile-next/devicekit-android/pull/14))
+
 ## [1.1.5](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.5) (2025-12-07)
 
 * Fixed AVC encoder latency issues with reduced timeout
