@@ -7,6 +7,7 @@ that is not possible through adb-shell alone.
 
 - Control clipboard content with support for utf8
 - Stream screen buffer as mjpeg (with scaling and quality parameters)
+- Dump UI view tree as XML (instrumentation-based, no accessibility service required)
 
 ## Installing
 
@@ -52,12 +53,30 @@ Since **devicekit** cannot force a keypress, use `adb shell input keyevent KEYCO
 
 Note that the single quotes after `adb shell` are required if your text includes spaces. The base64 encoding allows you to safely transfer whatever utf8 you wish to paste.
 
+### Dumping the UI View Tree
+
+```bash
+adb shell am instrument -w com.mobilenext.devicekit/.ViewTreeDump
+```
+
+The JSON hierarchy is returned inline in the `INSTRUMENTATION_STATUS: json=` line of the output.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `waitUntilIdle` | int (ms) | Wait up to N ms for the UI to become idle before dumping. Useful after a navigation or transition. Default: 0 (no wait). |
+
+Example with idle wait:
+```bash
+adb shell am instrument -w -e waitUntilIdle 2000 com.mobilenext.devicekit/.ViewTreeDump
+```
+
 ## Installation
 
-1. Build the APK using Android Studio or Gradle
-2. Install on your device: `adb install app/build/outputs/apk/debug/app-debug.apk`
-3. Launch the app to verify it's running
-4. Use the ADB commands above to set clipboard content
+1. Build the APKs using Android Studio or Gradle
+2. Install: `adb install app/build/outputs/apk/debug/app-debug.apk`
+3. Use the ADB commands above
 
 ## Debugging
 
