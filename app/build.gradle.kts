@@ -47,10 +47,13 @@ android {
 dependencies {
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.tracing)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
+    implementation(libs.androidx.uiautomator) {
+        exclude(group = "junit", module = "junit")
+    }
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
 

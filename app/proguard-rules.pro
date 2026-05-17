@@ -14,6 +14,13 @@
 # Keep all classes in our package unobfuscated
 -keep class com.mobilenext.devicekit.** { *; }
 
+# Keep tracing and test runner classes
+-keep class androidx.tracing.Trace { *; }
+-keep class androidx.test.** { *; }
+
+# Keep Kotlin stdlib needed by the test runner
+-keep class kotlin.** { *; }
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
