@@ -59,7 +59,7 @@ Note that the single quotes after `adb shell` are required if your text includes
 adb shell am instrument -w com.mobilenext.devicekit/.ViewTreeDump
 ```
 
-The XML hierarchy is returned inline in the `INSTRUMENTATION_STATUS: xml=` line of the output.
+The JSON hierarchy is returned inline in the `INSTRUMENTATION_STATUS: json=` line of the output.
 
 **Parameters:**
 

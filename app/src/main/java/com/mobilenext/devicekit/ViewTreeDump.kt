@@ -10,9 +10,8 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.uiautomator.UiDevice
-import org.xmlpull.v1.XmlPullParserFactory
-import org.xmlpull.v1.XmlSerializer
-import java.io.StringWriter
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -52,64 +51,61 @@ class ViewTreeDump : Instrumentation() {
             }
 
             Log.i(TAG, "windows=${windows.size} roots=${roots.size}")
-            val xml = serializeToXml(roots)
+            val json = serializeToJson(roots)
             roots.forEach { it.recycle() }
-            Log.i(TAG, "XML size: ${xml.length} chars")
+            Log.i(TAG, "JSON size: ${json.length} chars")
 
             val result = Bundle()
-            result.putString("xml", xml)
+            result.putString("json", json)
             sendStatus(0, result)
             finish(Activity.RESULT_OK, Bundle())
         }.start()
     }
 
-    private fun serializeToXml(roots: List<AccessibilityNodeInfo>): String {
-        val writer = StringWriter()
-        val serializer: XmlSerializer = XmlPullParserFactory.newInstance().newSerializer()
-        serializer.setOutput(writer)
-        serializer.startDocument("UTF-8", true)
-        serializer.startTag("", "hierarchy")
+    private fun serializeToJson(roots: List<AccessibilityNodeInfo>): String {
+        val array = JSONArray()
         for (root in roots) {
-            serializeNode(serializer, root, 0)
+            array.put(nodeToJson(root, 0))
         }
-        serializer.endTag("", "hierarchy")
-        serializer.endDocument()
-        return writer.toString()
+        return JSONObject().put("hierarchy", array).toString()
     }
 
-    private fun serializeNode(serializer: XmlSerializer, node: AccessibilityNodeInfo, index: Int) {
-        val className = node.className?.toString() ?: "unknown"
-        val tag = className.substringAfterLast('.')
-
-        serializer.startTag("", tag)
-        serializer.attribute("", "index", index.toString())
-        serializer.attribute("", "class", className)
-        serializer.attribute("", "package", node.packageName?.toString() ?: "")
-        serializer.attribute("", "text", node.text?.toString() ?: "")
-        serializer.attribute("", "content-desc", node.contentDescription?.toString() ?: "")
-        serializer.attribute("", "resource-id", node.viewIdResourceName ?: "")
-        serializer.attribute("", "checkable", node.isCheckable.toString())
-        serializer.attribute("", "checked", node.isChecked.toString())
-        serializer.attribute("", "clickable", node.isClickable.toString())
-        serializer.attribute("", "enabled", node.isEnabled.toString())
-        serializer.attribute("", "focusable", node.isFocusable.toString())
-        serializer.attribute("", "focused", node.isFocused.toString())
-        serializer.attribute("", "scrollable", node.isScrollable.toString())
-        serializer.attribute("", "long-clickable", node.isLongClickable.toString())
-        serializer.attribute("", "password", node.isPassword.toString())
-        serializer.attribute("", "selected", node.isSelected.toString())
-        serializer.attribute("", "visible", node.isVisibleToUser.toString())
-
+    private fun nodeToJson(node: AccessibilityNodeInfo, index: Int): JSONObject {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
-        serializer.attribute("", "bounds", "[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}]")
 
+        val obj = JSONObject()
+            .put("index", index)
+            .put("class", node.className?.toString() ?: "")
+            .put("package", node.packageName?.toString() ?: "")
+            .put("text", node.text?.toString() ?: "")
+            .put("content-desc", node.contentDescription?.toString() ?: "")
+            .put("resource-id", node.viewIdResourceName ?: "")
+            .put("checkable", node.isCheckable)
+            .put("checked", node.isChecked)
+            .put("clickable", node.isClickable)
+            .put("enabled", node.isEnabled)
+            .put("focusable", node.isFocusable)
+            .put("focused", node.isFocused)
+            .put("scrollable", node.isScrollable)
+            .put("long-clickable", node.isLongClickable)
+            .put("password", node.isPassword)
+            .put("selected", node.isSelected)
+            .put("visible", node.isVisibleToUser)
+            .put("bounds", JSONObject()
+                .put("left", bounds.left).put("top", bounds.top)
+                .put("right", bounds.right).put("bottom", bounds.bottom))
+
+        val children = JSONArray()
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            serializeNode(serializer, child, i)
+            children.put(nodeToJson(child, i))
             child.recycle()
         }
+        if (children.length() > 0) {
+            obj.put("children", children)
+        }
 
-        serializer.endTag("", tag)
+        return obj
     }
 }
