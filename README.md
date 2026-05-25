@@ -3,6 +3,21 @@
 An Android app that is a set of tools for controlling Android devices, changing configuration
 that is not possible through adb-shell alone.
 
+<p align="center">
+  <a href="https://github.com/mobile-next/devicekit-android">
+    <img src="https://img.shields.io/github/stars/mobile-next/devicekit-android" alt="GitHub Stars" />
+  </a>
+  <a href="https://github.com/mobile-next/devicekit-android/releases">
+    <img src="https://img.shields.io/github/release/mobile-next/devicekit-android" alt="Latest Release" />
+  </a>
+  <a href="https://github.com/mobile-next/devicekit-android/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-blue.svg" alt="License" />
+  </a>
+  <a href="http://mobilenexthq.com/join-slack">
+    <img src="https://img.shields.io/badge/join-Slack-blueviolet?logo=slack&style=flat" alt="Slack community channel" />
+  </a>
+</p>
+
 ## Features
 
 - Control clipboard content with support for utf8
