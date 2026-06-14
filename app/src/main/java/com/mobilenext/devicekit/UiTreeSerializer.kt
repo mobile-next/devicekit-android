@@ -1,0 +1,90 @@
+package com.mobilenext.devicekit
+
+import android.app.Instrumentation
+import android.app.UiAutomation
+import android.graphics.Rect
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import androidx.test.uiautomator.UiDevice
+import org.json.JSONArray
+import org.json.JSONObject
+
+object UiTreeSerializer {
+
+    fun dump(uiAutomation: UiAutomation, instrumentation: Instrumentation? = null, waitUntilIdle: Long = 0L): String {
+        if (waitUntilIdle > 0 && instrumentation != null) {
+            UiDevice.getInstance(instrumentation).waitForIdle(waitUntilIdle)
+        }
+
+        val windows: List<AccessibilityWindowInfo> = uiAutomation.windows
+        val roots = if (windows.isNotEmpty()) {
+            windows.mapNotNull { it.root }
+        } else {
+            listOfNotNull(uiAutomation.rootInActiveWindow)
+        }
+        windows.forEach { it.recycle() }
+
+        try {
+            return serialize(roots)
+        } finally {
+            roots.forEach { it.recycle() }
+        }
+    }
+
+    private fun serialize(roots: List<AccessibilityNodeInfo>): String {
+        val array = JSONArray()
+        for (root in roots) {
+            array.put(nodeToJson(root, 0))
+        }
+        return JSONObject().put("hierarchy", array).toString()
+    }
+
+    private fun nodeToJson(node: AccessibilityNodeInfo, index: Int): JSONObject {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+
+        // When a field is empty, AccessibilityNodeInfo.text returns the hint.
+        // Separate the two: report empty text for an empty field and expose the
+        // hint as its own attribute (mapped to `placeholder` downstream).
+        val rawText = node.text?.toString() ?: ""
+        val hintText = node.hintText?.toString() ?: ""
+        val showingHint = node.isShowingHintText
+        val text = if (showingHint) "" else rawText
+        val hint = if (hintText.isNotEmpty()) hintText else if (showingHint) rawText else ""
+
+        val obj = JSONObject()
+            .put("index", index)
+            .put("class", node.className?.toString() ?: "")
+            .put("package", node.packageName?.toString() ?: "")
+            .put("text", text)
+            .put("hint", hint)
+            .put("content-desc", node.contentDescription?.toString() ?: "")
+            .put("resource-id", node.viewIdResourceName ?: "")
+            .put("checkable", node.isCheckable)
+            .put("checked", node.isChecked)
+            .put("clickable", node.isClickable)
+            .put("enabled", node.isEnabled)
+            .put("focusable", node.isFocusable)
+            .put("focused", node.isFocused)
+            .put("scrollable", node.isScrollable)
+            .put("long-clickable", node.isLongClickable)
+            .put("password", node.isPassword)
+            .put("selected", node.isSelected)
+            .put("visible", node.isVisibleToUser)
+            .put("rect", JSONObject()
+                .put("x", bounds.left).put("y", bounds.top)
+                .put("width", bounds.right - bounds.left).put("height", bounds.bottom - bounds.top))
+
+        val children = JSONArray()
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            children.put(nodeToJson(child, i))
+            child.recycle()
+        }
+        if (children.length() > 0) {
+            obj.put("children", children)
+        }
+
+        return obj
+    }
+}
