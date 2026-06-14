@@ -1,3 +1,6 @@
+## [1.2.2](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.2) (2026-06-14)
+* Fix: Derive APK versionName/versionCode from the git tag at release time, so the published version matches the release tag
+
 ## [1.2.1](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.1) (2026-06-14)
 * Feat: DeviceKit HTTP server for faster actions without spawning a process per call ([#22](https://github.com/mobile-next/devicekit-android/pull/22))
 * Feat: Package lister with app name and versions ([#13](https://github.com/mobile-next/devicekit-android/pull/13))
