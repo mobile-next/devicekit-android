@@ -87,6 +87,46 @@ Example with idle wait:
 adb shell am instrument -w -e waitUntilIdle 2000 com.mobilenext.devicekit/.ViewTreeDump
 ```
 
+### Using the HTTP Server
+
+For repeated queries, the one-shot `am instrument` invocation above pays the instrumentation startup cost on every call. The HTTP server starts once and stays resident, answering requests over a persistent connection.
+
+Start the server:
+
+```bash
+adb shell am instrument -w com.mobilenext.devicekit/.DeviceKitServer
+```
+
+It listens on the abstract socket `localabstract:devicekit` and keeps running until the instrumentation is stopped. Leave this command running (or background it).
+
+Forward a local TCP port to the socket:
+
+```bash
+adb forward tcp:8080 localabstract:devicekit
+```
+
+Fetch the UI tree with a JSON-RPC request over `curl`:
+
+```bash
+curl -s http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"device.dump.ui","params":{}}'
+```
+
+The response is a JSON-RPC envelope whose `result` holds the `hierarchy` tree. The optional `waitUntilIdle` parameter (milliseconds) behaves as above:
+
+```bash
+curl -s http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"device.dump.ui","params":{"waitUntilIdle":2000}}'
+```
+
+Remove the forward when done:
+
+```bash
+adb forward --remove tcp:8080
+```
+
 ## Installation
 
 1. Build the APKs using Android Studio or Gradle
