@@ -20,6 +20,13 @@ class DeviceKitServer : Instrumentation() {
     companion object {
         private const val TAG = "DeviceKitServer"
         private const val SOCKET_NAME = "devicekit"
+
+        // JSON-RPC 2.0 protocol (https://www.jsonrpc.org/specification)
+        private const val JSONRPC_VERSION = "2.0"
+
+        // JSON-RPC 2.0 standard error codes
+        private const val JSONRPC_PARSE_ERROR = -32700
+        private const val JSONRPC_METHOD_NOT_FOUND = -32601
     }
 
     override fun onCreate(arguments: Bundle?) {
@@ -112,24 +119,24 @@ class DeviceKitServer : Instrumentation() {
                     val hierarchy = JSONObject(UiTreeSerializer.dump(uiAutomation, this, waitUntilIdle))
                     jsonRpcResult(id, hierarchy)
                 }
-                else -> jsonRpcError(id, -32601, "Method not found: $method")
+                else -> jsonRpcError(id, JSONRPC_METHOD_NOT_FOUND, "Method not found: $method")
             }
         } catch (e: Exception) {
             Log.e(TAG, "JSON-RPC error", e)
-            jsonRpcError(null, -32700, "Parse error: ${e.message}")
+            jsonRpcError(null, JSONRPC_PARSE_ERROR, "Parse error: ${e.message}")
         }
     }
 
     private fun jsonRpcResult(id: Any?, result: Any): String =
         JSONObject()
-            .put("jsonrpc", "2.0")
+            .put("jsonrpc", JSONRPC_VERSION)
             .put("id", id ?: JSONObject.NULL)
             .put("result", result)
             .toString()
 
     private fun jsonRpcError(id: Any?, code: Int, message: String): String =
         JSONObject()
-            .put("jsonrpc", "2.0")
+            .put("jsonrpc", JSONRPC_VERSION)
             .put("id", id ?: JSONObject.NULL)
             .put("error", JSONObject().put("code", code).put("message", message))
             .toString()
