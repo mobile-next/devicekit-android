@@ -27,6 +27,7 @@ class DeviceKitServer : Instrumentation() {
         // JSON-RPC 2.0 standard error codes
         private const val JSONRPC_PARSE_ERROR = -32700
         private const val JSONRPC_METHOD_NOT_FOUND = -32601
+        private const val JSONRPC_INTERNAL_ERROR = -32603
     }
 
     override fun onCreate(arguments: Bundle?) {
@@ -36,10 +37,11 @@ class DeviceKitServer : Instrumentation() {
 
     private fun runServer() {
         val uiAutomation = uiAutomation
+        var serverSocket: LocalServerSocket? = null
         try {
             connectUiAutomation(uiAutomation)
 
-            val serverSocket = LocalServerSocket(SOCKET_NAME)
+            serverSocket = LocalServerSocket(SOCKET_NAME)
             Log.i(TAG, "Listening on localabstract:$SOCKET_NAME")
 
             while (true) {
@@ -57,6 +59,8 @@ class DeviceKitServer : Instrumentation() {
             val error = Bundle()
             error.putString("error", e.message ?: e.javaClass.simpleName)
             finish(Activity.RESULT_CANCELED, error)
+        } finally {
+            serverSocket?.close()
         }
     }
 
@@ -107,9 +111,16 @@ class DeviceKitServer : Instrumentation() {
     }
 
     private fun handleJsonRpc(body: String, uiAutomation: UiAutomation): String {
+        val request: JSONObject
+        try {
+            request = JSONObject(body)
+        } catch (e: Exception) {
+            Log.e(TAG, "JSON parse error", e)
+            return jsonRpcError(null, JSONRPC_PARSE_ERROR, "Parse error: ${e.message}")
+        }
+
+        val id = request.opt("id")
         return try {
-            val request = JSONObject(body)
-            val id = request.opt("id")
             val method = request.optString("method")
             val params = request.optJSONObject("params")
 
@@ -122,8 +133,8 @@ class DeviceKitServer : Instrumentation() {
                 else -> jsonRpcError(id, JSONRPC_METHOD_NOT_FOUND, "Method not found: $method")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "JSON-RPC error", e)
-            jsonRpcError(null, JSONRPC_PARSE_ERROR, "Parse error: ${e.message}")
+            Log.e(TAG, "Internal error", e)
+            jsonRpcError(id, JSONRPC_INTERNAL_ERROR, "Internal error: ${e.message}")
         }
     }
 
