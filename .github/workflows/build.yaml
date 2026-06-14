@@ -57,7 +57,11 @@ jobs:
       run: |
         mkdir dist
         chmod +x gradlew
-        ./gradlew assembleDebug
+        VERSION_ARG=""
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          VERSION_ARG="-PversionName=${{ github.ref_name }}"
+        fi
+        ./gradlew assembleDebug $VERSION_ARG
         mv app/build/outputs/apk/debug/app-debug.apk dist/mobilenext-devicekit.apk
 
     - name: Upload APK artifact

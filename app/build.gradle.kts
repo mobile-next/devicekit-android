@@ -4,6 +4,16 @@ plugins {
     alias(libs.plugins.detekt)
 }
 
+// version name is supplied by the git tag at release time (-PversionName=x.y.z);
+// non-release builds fall back to a dev placeholder. versionCode is derived from it.
+val appVersionName = providers.gradleProperty("versionName").orNull ?: "0.0.0-dev"
+val appVersionCode = appVersionName
+    .substringBefore("-")
+    .split(".")
+    .mapNotNull { it.toIntOrNull() }
+    .let { if (it.size == 3) it[0] * 10000 + it[1] * 100 + it[2] else 1 }
+    .coerceAtLeast(1)
+
 android {
     namespace = "com.mobilenext.devicekit"
     compileSdk = 35
@@ -12,8 +22,8 @@ android {
         applicationId = "com.mobilenext.devicekit"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
