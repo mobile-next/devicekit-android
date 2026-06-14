@@ -88,7 +88,7 @@ class DeviceKitServer : Instrumentation() {
             if (n == -1) break
             offset += n
         }
-        val body = String(bodyChars)
+        val body = String(bodyChars, 0, offset)
 
         val responseJson = handleJsonRpc(body, uiAutomation)
         val responseBytes = responseJson.toByteArray(Charsets.UTF_8)

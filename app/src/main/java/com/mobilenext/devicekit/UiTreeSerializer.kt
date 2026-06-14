@@ -17,12 +17,17 @@ object UiTreeSerializer {
         }
 
         val windows: List<AccessibilityWindowInfo> = uiAutomation.windows
-        val roots = if (windows.isNotEmpty()) {
-            windows.mapNotNull { it.root }
+        val windowRoots = windows.mapNotNull { it.root }
+        windows.forEach { it.recycle() }
+
+        // Windows can be present yet expose null roots (not queryable at the
+        // moment of the dump), which would otherwise yield an empty hierarchy.
+        // Fall back to the active window's root in that case.
+        val roots = if (windowRoots.isNotEmpty()) {
+            windowRoots
         } else {
             listOfNotNull(uiAutomation.rootInActiveWindow)
         }
-        windows.forEach { it.recycle() }
 
         try {
             return serialize(roots)
@@ -78,8 +83,11 @@ object UiTreeSerializer {
         val children = JSONArray()
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            children.put(nodeToJson(child, i))
-            child.recycle()
+            try {
+                children.put(nodeToJson(child, i))
+            } finally {
+                child.recycle()
+            }
         }
         if (children.length() > 0) {
             obj.put("children", children)
