@@ -1,7 +1,9 @@
 # Mobile Next Device Kit
 
-An Android app that is a set of tools for controlling Android devices, changing configuration
-that is not possible through adb-shell alone.
+A set of tools for controlling Android devices and reading device state that is
+not possible through `adb shell` alone. The tools run **headless** via
+`app_process` straight from a single `classes.dex` — nothing needs to be
+installed on the device.
 
 <p align="center">
   <a href="https://github.com/mobile-next/devicekit-android">
@@ -20,127 +22,162 @@ that is not possible through adb-shell alone.
 
 ## Features
 
-- Control clipboard content with support for utf8
-- Stream screen buffer as mjpeg (with scaling and quality parameters)
-- Dump UI view tree as XML (instrumentation-based, no accessibility service required)
+- **Clipboard** — get, set (incl. base64), and clear the system clipboard
+- **UI tree dump** — dump the on-screen accessibility hierarchy as JSON
+- **Package list** — list installed packages with app name and version
+- **Screen streaming** — H.264 (AVC) or MJPEG, with scale/fps/quality options
+
+All of the above run from the published `devicekit.dex` with no app install.
 
 ## Installing
 
-Simply download the latest release from [github releases](https://github.com/mobile-next/devicekit-android/releases), install the package onto your device, and see **Usage** section below for commands.
+Download the latest `devicekit.dex` from
+[GitHub releases](https://github.com/mobile-next/devicekit-android/releases) and
+push it to the device:
 
-You may also just automate it all by running the copy-pasting the following script onto your terminal:
 ```bash
-curl -s -O -J -L https://github.com/mobile-next/devicekit-android/releases/download/1.1.13/mobilenext-devicekit.apk
-
-adb install -r mobilenext-devicekit.apk
+curl -s -O -J -L https://github.com/mobile-next/devicekit-android/releases/latest/download/devicekit.dex
+adb push devicekit.dex /data/local/tmp/
 ```
 
 ## Usage
 
-### Setting Clipboard via ADB
-
-Once the app is installed on your device or emulator, you can set the clipboard content using the following ADB command:
+Every tool is launched the same way — `app_process` with the dex on the
+classpath:
 
 ```bash
-adb shell 'am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "this can be pasted now"'
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.<Tool> [args]
 ```
 
-### Clearing Clipboard via ADB
+The tools run as the `shell` user (uid 2000); no root is required.
+
+> For tools that emit **binary** output (the screen streamers) use
+> `adb exec-out` instead of `adb shell`, otherwise the stream is corrupted by
+> newline translation.
+
+### Clipboard
 
 ```bash
-adb shell am broadcast -a devicekit.clipboard.clear -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver
+# Set the clipboard
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.Clipboard set "Hello World"
+
+# Set from base64 (safest for spaces, emoji, and other UTF-8) — "✌️"
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.Clipboard set --base64 "4pyM77iP"
+
+# Print the current clipboard text
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.Clipboard get
+
+# Clear the clipboard
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.Clipboard clear
 ```
 
-### Examples
+Since devicekit cannot force a keypress, paste with:
 
 ```bash
-# Set clipboard content
-adb shell 'am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "Hello World"'
-
-# Using base64 for complex text (set 'encoding' to 'base64')
-adb shell am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e encoding "base64" -e text "4pyM77iP"
-
-# Set special characters
-adb shell 'am broadcast -a devicekit.clipboard.set -n com.mobilenext.devicekit/.ClipboardBroadcastReceiver -e text "こんにちは世界"'
+adb shell input keyevent KEYCODE_PASTE
 ```
 
-Since **devicekit** cannot force a keypress, use `adb shell input keyevent KEYCODE_PASTE` to paste clipboard onto current input text field.
+### Dump the UI view tree
 
-Note that the single quotes after `adb shell` are required if your text includes spaces. The base64 encoding allows you to safely transfer whatever utf8 you wish to paste.
-
-### Dumping the UI View Tree
+Prints the current accessibility hierarchy as JSON to stdout:
 
 ```bash
-adb shell am instrument -w com.mobilenext.devicekit/.ViewTreeDump
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.UiDump
 ```
 
-The JSON hierarchy is returned inline in the `INSTRUMENTATION_STATUS: json=` line of the output.
+Optionally wait up to N milliseconds for the UI to go idle first (useful right
+after a navigation or transition):
 
-**Parameters:**
-
-| Parameter | Type | Description |
-|---|---|---|
-| `waitUntilIdle` | int (ms) | Wait up to N ms for the UI to become idle before dumping. Useful after a navigation or transition. Default: 0 (no wait). |
-
-Example with idle wait:
 ```bash
-adb shell am instrument -w -e waitUntilIdle 2000 com.mobilenext.devicekit/.ViewTreeDump
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.UiDump 2000
 ```
 
-### Using the HTTP Server
+### List installed packages
 
-For repeated queries, the one-shot `am instrument` invocation above pays the instrumentation startup cost on every call. The HTTP server starts once and stays resident, answering requests over a persistent connection.
-
-Start the server:
+Prints a JSON array of `{packageName, appName, version}`:
 
 ```bash
+adb shell CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.PackageLister
+```
+
+### Stream the screen as H.264 (AVC)
+
+Writes a raw H.264 (Annex-B) elementary stream to stdout:
+
+```bash
+adb exec-out CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.AvcServer --scale 0.5 --fps 30 > screen.h264
+```
+
+Pipe it straight into a player:
+
+```bash
+adb exec-out CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.AvcServer | ffplay -probesize 32 -sync ext -
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `--bitrate` | int (bps) | 10000000 | Target bitrate (min 100000) |
+| `--scale` | float | 1.0 | Output scale, 0.1–2.0 |
+| `--fps` | int | 30 | Frame rate, 1–60 |
+
+### Stream the screen as MJPEG
+
+Writes a `multipart/x-mixed-replace` MJPEG stream to stdout:
+
+```bash
+adb exec-out CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenext.devicekit.MjpegServer --quality 80 --scale 0.5 --fps 30 > screen.mjpeg
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `--quality` | int | 80 | JPEG quality, 1–100 |
+| `--scale` | float | 1.0 | Output scale, 0.1–2.0 |
+| `--fps` | int | 30 | Frame rate, 1–60 |
+
+## Resident JSON-RPC server (advanced)
+
+For repeated UI queries, `DeviceKitServer` starts once and stays resident,
+answering JSON-RPC over a persistent socket instead of paying process startup on
+every call. It is instrumentation-based, so it requires the **APK** to be
+installed (build it from source — see below):
+
+```bash
+# Start the server (leave running or background it)
 adb shell am instrument -w com.mobilenext.devicekit/.DeviceKitServer
 ```
 
-It listens on the abstract socket `localabstract:devicekit` and keeps running until the instrumentation is stopped. Leave this command running (or background it).
-
-Forward a local TCP port to the socket:
+It listens on `localabstract:devicekit`. Forward a local port and query it:
 
 ```bash
 adb forward tcp:8080 localabstract:devicekit
-```
 
-Fetch the UI tree with a JSON-RPC request over `curl`:
-
-```bash
-curl -s http://localhost:8080 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"device.dump.ui","params":{}}'
-```
-
-The response is a JSON-RPC envelope whose `result` holds the `hierarchy` tree. The optional `waitUntilIdle` parameter (milliseconds) behaves as above:
-
-```bash
 curl -s http://localhost:8080 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"device.dump.ui","params":{"waitUntilIdle":2000}}'
-```
 
-Remove the forward when done:
-
-```bash
 adb forward --remove tcp:8080
 ```
 
-## Installation
-
-1. Build the APKs using Android Studio or Gradle
-2. Install: `adb install app/build/outputs/apk/debug/app-debug.apk`
-3. Use the ADB commands above
-
-## Debugging
-
-The app logs all broadcast reception events. You can view logs using:
+## Building from source
 
 ```bash
-adb logcat -s ClipboardReceiver
+./gradlew assembleDebug
+```
+
+The dex used by all the `app_process` tools is inside the built APK:
+
+```bash
+unzip -o -j app/build/outputs/apk/debug/app-debug.apk classes.dex -d .
+adb push classes.dex /data/local/tmp/devicekit.dex
+```
+
+To use the instrumentation-based resident server, install the APK instead:
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Requirements
 
-- Android 10 (API 29) minimum
+- Android 10 (API 29) or newer
+- Tools run in the `adb shell` (uid 2000) context; no root required
