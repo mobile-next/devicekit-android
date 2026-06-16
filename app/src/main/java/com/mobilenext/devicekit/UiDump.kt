@@ -2,6 +2,8 @@
 
 package com.mobilenext.devicekit
 
+import android.os.Looper
+import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 /**
@@ -16,14 +18,26 @@ import kotlin.system.exitProcess
  */
 fun main(args: Array<String>) {
     val waitUntilIdle = args.getOrNull(0)?.toLongOrNull() ?: 0L
-    try {
-        val uiAutomation = UiAutomationFactory.createAndConnect()
-        val json = UiTreeSerializer.dump(uiAutomation, waitUntilIdle)
-        println(json)
-        exitProcess(0)
-    } catch (t: Throwable) {
-        System.err.println("Error: ${t.message}")
-        t.printStackTrace(System.err)
-        exitProcess(1)
+
+    // A bare app_process has no main looper (a normal app gets one from
+    // ActivityThread). The accessibility framework builds a Handler on the main
+    // looper, so prepare one here and run the dump on a worker thread while the
+    // main thread services looper callbacks.
+    Looper.prepareMainLooper()
+
+    thread(name = "devicekit-uidump") {
+        try {
+            val uiAutomation = UiAutomationFactory.createAndConnect()
+            val json = UiTreeSerializer.dump(uiAutomation, waitUntilIdle)
+            println(json)
+            System.out.flush()
+            exitProcess(0)
+        } catch (t: Throwable) {
+            System.err.println("Error: ${t.message}")
+            t.printStackTrace(System.err)
+            exitProcess(1)
+        }
     }
+
+    Looper.loop()
 }
