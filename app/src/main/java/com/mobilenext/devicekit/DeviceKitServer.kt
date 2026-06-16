@@ -1,6 +1,5 @@
 package com.mobilenext.devicekit
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
 import android.app.Instrumentation
 import android.app.UiAutomation
@@ -8,12 +7,9 @@ import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.os.Bundle
 import android.util.Log
-import android.view.accessibility.AccessibilityEvent
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 class DeviceKitServer : Instrumentation() {
 
@@ -39,7 +35,7 @@ class DeviceKitServer : Instrumentation() {
         val uiAutomation = uiAutomation
         var serverSocket: LocalServerSocket? = null
         try {
-            connectUiAutomation(uiAutomation)
+            UiAutomationFactory.configureForWindowRetrieval(uiAutomation)
 
             serverSocket = LocalServerSocket(SOCKET_NAME)
             Log.i(TAG, "Listening on localabstract:$SOCKET_NAME")
@@ -62,20 +58,6 @@ class DeviceKitServer : Instrumentation() {
         } finally {
             serverSocket?.close()
         }
-    }
-
-    private fun connectUiAutomation(uiAutomation: UiAutomation) {
-        val latch = CountDownLatch(1)
-        uiAutomation.setOnAccessibilityEventListener { latch.countDown() }
-        uiAutomation.serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                    AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-        }
-        latch.await(2, TimeUnit.SECONDS)
-        uiAutomation.setOnAccessibilityEventListener(null)
     }
 
     private fun handleConnection(conn: LocalSocket, uiAutomation: UiAutomation) {
@@ -127,7 +109,7 @@ class DeviceKitServer : Instrumentation() {
             when (method) {
                 "device.dump.ui" -> {
                     val waitUntilIdle = params?.optLong("waitUntilIdle") ?: 0L
-                    val hierarchy = JSONObject(UiTreeSerializer.dump(uiAutomation, this, waitUntilIdle))
+                    val hierarchy = JSONObject(UiTreeSerializer.dump(uiAutomation, waitUntilIdle))
                     jsonRpcResult(id, hierarchy)
                 }
                 else -> jsonRpcError(id, JSONRPC_METHOD_NOT_FOUND, "Method not found: $method")

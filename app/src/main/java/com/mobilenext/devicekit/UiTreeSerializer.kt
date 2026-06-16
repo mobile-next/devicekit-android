@@ -1,19 +1,21 @@
 package com.mobilenext.devicekit
 
-import android.app.Instrumentation
 import android.app.UiAutomation
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
-import androidx.test.uiautomator.UiDevice
 import org.json.JSONArray
 import org.json.JSONObject
 
 object UiTreeSerializer {
 
-    fun dump(uiAutomation: UiAutomation, instrumentation: Instrumentation? = null, waitUntilIdle: Long = 0L): String {
-        if (waitUntilIdle > 0 && instrumentation != null) {
-            UiDevice.getInstance(instrumentation).waitForIdle(waitUntilIdle)
+    // The UI must be quiet for this long before waitForIdle returns, bounded by
+    // the caller-supplied global timeout. Mirrors UiDevice.waitForIdle semantics.
+    private const val IDLE_WINDOW_MS = 500L
+
+    fun dump(uiAutomation: UiAutomation, waitUntilIdle: Long = 0L): String {
+        if (waitUntilIdle > 0) {
+            uiAutomation.waitForIdle(IDLE_WINDOW_MS, waitUntilIdle)
         }
 
         val windows: List<AccessibilityWindowInfo> = uiAutomation.windows
