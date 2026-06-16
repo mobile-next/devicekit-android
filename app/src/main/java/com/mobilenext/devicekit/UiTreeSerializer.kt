@@ -2,12 +2,16 @@ package com.mobilenext.devicekit
 
 import android.app.UiAutomation
 import android.graphics.Rect
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.TimeoutException
 
 object UiTreeSerializer {
+
+    private const val TAG = "UiTreeSerializer"
 
     // The UI must be quiet for this long before waitForIdle returns, bounded by
     // the caller-supplied global timeout. Mirrors UiDevice.waitForIdle semantics.
@@ -15,7 +19,14 @@ object UiTreeSerializer {
 
     fun dump(uiAutomation: UiAutomation, waitUntilIdle: Long = 0L): String {
         if (waitUntilIdle > 0) {
-            uiAutomation.waitForIdle(IDLE_WINDOW_MS, waitUntilIdle)
+            // Best-effort settle: UiAutomation.waitForIdle throws TimeoutException
+            // when the UI never goes idle (animations, video, spinners). Swallow it
+            // and dump the current state, matching the old UiDevice.waitForIdle.
+            try {
+                uiAutomation.waitForIdle(IDLE_WINDOW_MS, waitUntilIdle)
+            } catch (e: TimeoutException) {
+                Log.w(TAG, "UI not idle within ${waitUntilIdle}ms; dumping current state", e)
+            }
         }
 
         val windows: List<AccessibilityWindowInfo> = uiAutomation.windows
