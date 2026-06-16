@@ -2,9 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permission to access clipboard -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-
     <instrumentation
         android:name=".ViewTreeDump"
         android:targetPackage="com.mobilenext.devicekit" />
@@ -23,16 +20,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Mobilenextclipboard"
         tools:targetApi="31">
-
-        <!-- BroadcastReceiver for clipboard operations -->
-        <receiver
-            android:name=".ClipboardBroadcastReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="clipper.set" />
-            </intent-filter>
-        </receiver>
 
     </application>
 
