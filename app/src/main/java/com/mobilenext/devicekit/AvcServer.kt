@@ -18,7 +18,7 @@ import kotlin.system.exitProcess
 class AvcServer(private val bitrate: Int, private val scale: Float, private val fps: Int) {
     companion object {
         private const val TAG = "AvcServer"
-        private const val DEFAULT_BITRATE = 10_000_000  // 10 Mbps (Google's default)
+        private const val DEFAULT_BITRATE = 3_000_000  // 3 Mbps — sane ceiling for screen mirroring over constrained links
         private const val DEFAULT_SCALE = 1.0f
         private const val DEFAULT_FPS = 30
         private const val MIN_FPS = 1
@@ -179,6 +179,10 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
             scaledHeight
         ).apply {
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
+            // CBR caps the encoder's peak rate so a burst of motion can't flood a
+            // constrained viewer link (VBR was spiking to ~9 Mbps). A static screen
+            // still idles low because surface input only feeds duplicate frames.
+            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_CAPTURE_RATE, fps)  // Set capture rate to match frame rate
             setFloat(MediaFormat.KEY_OPERATING_RATE, fps.toFloat())  // Set operating rate

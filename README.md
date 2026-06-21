@@ -116,7 +116,7 @@ adb exec-out CLASSPATH=/data/local/tmp/devicekit.dex app_process / com.mobilenex
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `--bitrate` | int (bps) | 10000000 | Target bitrate (min 100000) |
+| `--bitrate` | int (bps) | 3000000 | Target bitrate, CBR (min 100000) |
 | `--scale` | float | 1.0 | Output scale, 0.1–2.0 |
 | `--fps` | int | 30 | Frame rate, 1–60 |
 
