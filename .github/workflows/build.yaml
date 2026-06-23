@@ -66,6 +66,7 @@ jobs:
         # that dex rather than the full APK. -j drops the archive path.
         unzip -o -j app/build/outputs/apk/debug/app-debug.apk classes.dex -d dist
         mv dist/classes.dex dist/devicekit.dex
+        cp app/build/outputs/apk/debug/app-debug.apk dist/devicekit.apk
 
     - name: Upload dex artifact
       uses: actions/upload-artifact@v4
@@ -81,4 +82,5 @@ jobs:
         name: Version ${{ github.ref_name }}
         files: |
           dist/devicekit.dex
+          dist/devicekit.apk
   
