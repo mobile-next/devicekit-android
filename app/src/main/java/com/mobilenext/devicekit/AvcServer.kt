@@ -4,13 +4,16 @@ import android.hardware.display.VirtualDisplay
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import android.view.Display
 import android.view.Surface
+import java.io.BufferedReader
 import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStreamReader
 import java.nio.channels.Channels
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
@@ -19,11 +22,13 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
     companion object {
         private const val TAG = "AvcServer"
         private const val DEFAULT_BITRATE = 3_000_000  // 3 Mbps — sane ceiling for screen mirroring over constrained links
+        private const val MIN_BITRATE = 100_000        // 100 kbps floor for adaptive control
+        private const val MAX_BITRATE = 10_000_000      // 10 Mbps ceiling for adaptive control
         private const val DEFAULT_SCALE = 1.0f
         private const val DEFAULT_FPS = 30
         private const val MIN_FPS = 1
         private const val MAX_FPS = 60
-        private const val I_FRAME_INTERVAL = 1  // 1 second
+        private const val I_FRAME_INTERVAL = 2  // 2s — 3s created larger bursts than 1s; tuning down
 
         @JvmStatic
         fun main(args: Array<String>) {
@@ -127,6 +132,57 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing virtual display", e)
         }
+    }
+
+    // startBitrateControlReader spawns a daemon thread that reads newline-delimited
+    // commands from stdin and applies them live. Only "bitrate <bps>" is supported.
+    // Stdin is the existing adb exec-out pipe, so no extra socket is needed; if the
+    // host never sends commands (or stdin is closed), this thread simply idles/exits
+    // and streaming is unaffected.
+    private fun startBitrateControlReader(codec: MediaCodec) {
+        val thread = Thread {
+            try {
+                val reader = BufferedReader(InputStreamReader(System.`in`))
+                while (true) {
+                    val line = reader.readLine() ?: break  // EOF: host closed stdin
+                    val parts = line.trim().split(Regex("\\s+"))
+                    when {
+                        parts.size == 2 && parts[0] == "bitrate" -> {
+                            val bps = parts[1].toIntOrNull()
+                            if (bps == null) {
+                                Log.w(TAG, "Ignoring invalid bitrate command: $line")
+                                continue
+                            }
+                            val clamped = bps.coerceIn(MIN_BITRATE, MAX_BITRATE)
+                            try {
+                                codec.setParameters(Bundle().apply {
+                                    putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped)
+                                })
+                                Log.d(TAG, "Applied live bitrate: $clamped bps")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to apply live bitrate $clamped", e)
+                            }
+                        }
+                        parts.size == 1 && parts[0] == "keyframe" -> {
+                            try {
+                                codec.setParameters(Bundle().apply {
+                                    putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                                })
+                                Log.d(TAG, "Requested immediate sync frame")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to request sync frame", e)
+                            }
+                        }
+                        line.isNotBlank() -> Log.w(TAG, "Ignoring unknown control command: $line")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Bitrate control reader stopped: ${e.message}")
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "avc-bitrate-control"
+        thread.start()
     }
 
     private fun streamAvcFrames() {
@@ -236,6 +292,10 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         // Start codec
         codec.start()
         Log.d(TAG, "AVC encoder started")
+
+        // Listen for live bitrate commands on stdin so the host can adapt the
+        // encoder to the viewer's measured downlink without restarting the stream.
+        startBitrateControlReader(codec)
 
         val bufferInfo = MediaCodec.BufferInfo()
         val timeout = 100_000L  // 100ms timeout for responsive shutdown (matches REPEAT_FRAME_DELAY)
