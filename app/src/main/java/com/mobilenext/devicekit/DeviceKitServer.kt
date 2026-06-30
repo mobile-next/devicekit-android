@@ -6,7 +6,10 @@ import android.app.UiAutomation
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
+import android.view.KeyEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -112,12 +115,29 @@ class DeviceKitServer : Instrumentation() {
                     val hierarchy = JSONObject(UiTreeSerializer.dump(uiAutomation, waitUntilIdle))
                     jsonRpcResult(id, hierarchy)
                 }
+                "device.io.keyboard.hide" -> {
+                    val dismissed = hideKeyboard(uiAutomation)
+                    jsonRpcResult(id, JSONObject().put("dismissed", dismissed))
+                }
                 else -> jsonRpcError(id, JSONRPC_METHOD_NOT_FOUND, "Method not found: $method")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Internal error", e)
             jsonRpcError(id, JSONRPC_INTERNAL_ERROR, "Internal error: ${e.message}")
         }
+    }
+
+    // The soft keyboard is just an IME-type window; if it's up, BACK dismisses it.
+    // ponytail: no headless way to *show* the IME — Android only raises it for a
+    // focused editable view in the target app, so only hide is offered here.
+    private fun hideKeyboard(uiAutomation: UiAutomation): Boolean {
+        val imeShown = uiAutomation.windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        if (!imeShown) return false
+
+        val now = SystemClock.uptimeMillis()
+        uiAutomation.injectInputEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0), true)
+        uiAutomation.injectInputEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0), true)
+        return true
     }
 
     private fun jsonRpcResult(id: Any?, result: Any): String =
