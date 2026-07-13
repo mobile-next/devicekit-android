@@ -14,6 +14,7 @@ import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.channels.Channels
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
 
@@ -90,6 +91,10 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
 
     private val shutdownLatch = CountDownLatch(1)
 
+    // MediaCodec is driven from the encoder thread; control-socket commands are
+    // enqueued here and drained there so all codec access stays single-threaded.
+    private val codecCommands = ConcurrentLinkedQueue<() -> Unit>()
+
     private fun start() {
         try {
             // Register shutdown hook for graceful termination
@@ -147,38 +152,42 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
     // only channel that reaches this shell-uid process. Control is best-effort: if
     // the socket can't bind, streaming continues unaffected.
     private fun startControlServer(codec: MediaCodec) {
-        try {
-            JsonRpcSocketServer(CONTROL_SOCKET) { method, params ->
-                when (method) {
-                    "screencapture.setBitrate" -> {
-                        val bps = params?.optInt("bps", -1) ?: -1
-                        if (bps <= 0) {
-                            throw JsonRpcSocketServer.RpcException(
-                                JsonRpcSocketServer.ERROR_INTERNAL,
-                                "setBitrate requires a positive 'bps'",
-                            )
-                        }
-                        val clamped = bps.coerceIn(MIN_BITRATE, MAX_BITRATE)
+        JsonRpcSocketServer(CONTROL_SOCKET) { method, params ->
+            when (method) {
+                "screencapture.setBitrate" -> {
+                    val bps = params?.optInt("bps", -1) ?: -1
+                    if (bps <= 0) {
+                        throw JsonRpcSocketServer.RpcException(
+                            JsonRpcSocketServer.ERROR_INTERNAL,
+                            "setBitrate requires a positive 'bps'",
+                        )
+                    }
+                    val clamped = bps.coerceIn(MIN_BITRATE, MAX_BITRATE)
+                    // Apply on the encoder thread — never touch the codec from here.
+                    codecCommands.add {
                         codec.setParameters(Bundle().apply {
                             putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped)
                         })
                         Log.d(TAG, "Applied live bitrate: $clamped bps")
-                        JSONObject().put("bitrate", clamped)
                     }
-                    "screencapture.requestKeyFrame" -> {
+                    JSONObject().put("bitrate", clamped)
+                }
+                "screencapture.requestKeyFrame" -> {
+                    codecCommands.add {
                         codec.setParameters(Bundle().apply {
                             putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
                         })
                         Log.d(TAG, "Requested immediate sync frame")
-                        JSONObject().put("ok", true)
                     }
-                    else -> throw JsonRpcSocketServer.RpcException(
-                        JsonRpcSocketServer.ERROR_METHOD_NOT_FOUND,
-                        "Method not found: $method",
-                    )
+                    JSONObject().put("ok", true)
                 }
-            }.startDaemon()
-        } catch (e: Exception) {
+                else -> throw JsonRpcSocketServer.RpcException(
+                    JsonRpcSocketServer.ERROR_METHOD_NOT_FOUND,
+                    "Method not found: $method",
+                )
+            }
+        }.startDaemon { e ->
+            // Bind runs on the daemon thread, so its failure surfaces here.
             Log.w(TAG, "Failed to start control server; live control unavailable", e)
         }
     }
@@ -312,6 +321,18 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                 // Check if shutdown requested
                 if (shutdownLatch.count == 0L) {
                     break
+                }
+
+                // Apply pending control-socket commands on this (encoder) thread
+                // so every MediaCodec.setParameters call is serialized with encoding.
+                var command = codecCommands.poll()
+                while (command != null) {
+                    try {
+                        command()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error applying codec command", e)
+                    }
+                    command = codecCommands.poll()
                 }
 
                 // Dequeue encoded output buffer

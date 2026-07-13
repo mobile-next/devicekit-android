@@ -26,10 +26,18 @@ class JsonRpcSocketServer(
 
         // JSON-RPC 2.0 standard error codes
         const val ERROR_PARSE = -32700
+        const val ERROR_INVALID_REQUEST = -32600
         const val ERROR_METHOD_NOT_FOUND = -32601
+        const val ERROR_INVALID_PARAMS = -32602
         const val ERROR_INTERNAL = -32603
 
         private const val CONTENT_LENGTH_PREFIX = "content-length:"
+
+        // Guardrails for a request on the local socket: a larger body is rejected
+        // before allocation, and a stalled peer can't pin the accept thread past
+        // the read timeout.
+        private const val MAX_CONTENT_LENGTH = 1 shl 20  // 1 MiB
+        private const val READ_TIMEOUT_MS = 5_000
     }
 
     // A dispatch handler throws RpcException to return a specific JSON-RPC error
@@ -67,12 +75,16 @@ class JsonRpcSocketServer(
     }
 
     // startDaemon runs start() on a daemon thread and returns immediately.
-    fun startDaemon(): Thread {
+    // onError, if given, receives any exception that ends start() on the daemon
+    // thread — including a bind failure, which happens on this thread rather than
+    // synchronously in the caller.
+    fun startDaemon(onError: ((Throwable) -> Unit)? = null): Thread {
         val thread = Thread {
             try {
                 start()
             } catch (e: Exception) {
-                Log.e(TAG, "server on $socketName stopped: ${e.message}")
+                if (onError != null) onError(e)
+                else Log.e(TAG, "server on $socketName stopped: ${e.message}")
             }
         }
         thread.isDaemon = true
@@ -90,6 +102,8 @@ class JsonRpcSocketServer(
     }
 
     private fun handleConnection(conn: LocalSocket) {
+        conn.soTimeout = READ_TIMEOUT_MS  // don't let a stalled peer pin the accept thread
+
         val reader = BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.ISO_8859_1))
 
         reader.readLine() ?: return // request line
@@ -103,6 +117,12 @@ class JsonRpcSocketServer(
             line = reader.readLine()
         }
 
+        if (contentLength < 0 || contentLength > MAX_CONTENT_LENGTH) {
+            Log.w(TAG, "Rejecting Content-Length $contentLength on $socketName")
+            writeResponse(conn, jsonRpcError(null, ERROR_INVALID_REQUEST, "Content-Length out of bounds"))
+            return
+        }
+
         val bodyChars = CharArray(contentLength)
         var offset = 0
         while (offset < contentLength) {
@@ -110,11 +130,27 @@ class JsonRpcSocketServer(
             if (n == -1) break
             offset += n
         }
+        if (offset < contentLength) {
+            Log.w(TAG, "Incomplete body: read $offset of $contentLength bytes on $socketName")
+            writeResponse(conn, jsonRpcError(null, ERROR_INVALID_REQUEST, "Incomplete request body"))
+            return
+        }
         val body = String(bodyChars, 0, offset)
 
-        val responseJson = handleJsonRpc(body)
-        val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
+        writeResponse(conn, handleJsonRpc(body))
+    }
 
+    // writeResponse frames a JSON-RPC reply as HTTP/1.1. A null body is a
+    // notification: acknowledged at the HTTP layer with no content.
+    private fun writeResponse(conn: LocalSocket, responseJson: String?) {
+        if (responseJson == null) {
+            conn.outputStream.write(
+                "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n".toByteArray(StandardCharsets.UTF_8)
+            )
+            conn.outputStream.flush()
+            return
+        }
+        val responseBytes = responseJson.toByteArray(StandardCharsets.UTF_8)
         val httpResponse = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n" +
             "Content-Length: ${responseBytes.size}\r\nConnection: close\r\n\r\n"
         conn.outputStream.write(httpResponse.toByteArray(StandardCharsets.UTF_8))
@@ -122,7 +158,10 @@ class JsonRpcSocketServer(
         conn.outputStream.flush()
     }
 
-    private fun handleJsonRpc(body: String): String {
+    // handleJsonRpc returns the response body, or null for a notification (a
+    // request with no "id"), which is dispatched for its side effect but gets no
+    // JSON-RPC response.
+    private fun handleJsonRpc(body: String): String? {
         val request: JSONObject
         try {
             request = JSONObject(body)
@@ -131,16 +170,32 @@ class JsonRpcSocketServer(
             return jsonRpcError(null, ERROR_PARSE, "Parse error: ${e.message}")
         }
 
+        val isNotification = !request.has("id")
         val id = request.opt("id")
+
+        // Validate the envelope before dispatch: jsonrpc must be "2.0" and method
+        // must be a non-empty string.
+        val method = request.opt("method")
+        if (request.optString("jsonrpc") != JSONRPC_VERSION || method !is String || method.isEmpty()) {
+            return if (isNotification) null else jsonRpcError(id, ERROR_INVALID_REQUEST, "Invalid Request")
+        }
+
+        // params, when present, must be a JSON object — this API takes named
+        // params only, so arrays/scalars are rejected as invalid params.
+        val rawParams = request.opt("params")
+        if (rawParams != null && rawParams != JSONObject.NULL && rawParams !is JSONObject) {
+            return if (isNotification) null else jsonRpcError(id, ERROR_INVALID_PARAMS, "Invalid params")
+        }
+        val params = rawParams as? JSONObject
+
         return try {
-            val method = request.optString("method")
-            val params = request.optJSONObject("params")
-            jsonRpcResult(id, dispatch(method, params))
+            val result = dispatch(method, params)
+            if (isNotification) null else jsonRpcResult(id, result)
         } catch (e: RpcException) {
-            jsonRpcError(id, e.code, e.message)
+            if (isNotification) null else jsonRpcError(id, e.code, e.message)
         } catch (e: Exception) {
             Log.e(TAG, "Internal error", e)
-            jsonRpcError(id, ERROR_INTERNAL, "Internal error: ${e.message}")
+            if (isNotification) null else jsonRpcError(id, ERROR_INTERNAL, "Internal error: ${e.message}")
         }
     }
 
