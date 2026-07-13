@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.4) (2026-07-13)
+* Feat: Live encoder control over a localabstract JSON-RPC socket — adjust bitrate and request keyframes without restarting the stream ([#38](https://github.com/mobile-next/devicekit-android/pull/38))
+* Fix: Hardened the JSON-RPC socket (read timeout, Content-Length cap, envelope validation) and serialized live encoder control onto the encoder thread ([#39](https://github.com/mobile-next/devicekit-android/pull/39))
+
+## [1.2.3](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.3) (2026-06-23)
+* Chore: Changed AVC bandwidth to 3Mbps with CBR (instead of VBR)
+
 ## [1.2.2](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.2) (2026-06-14)
 * Fix: Derive APK versionName/versionCode from the git tag at release time, so the published version matches the release tag
 
