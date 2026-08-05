@@ -4,14 +4,17 @@ import android.hardware.display.VirtualDisplay
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import android.view.Display
 import android.view.Surface
+import org.json.JSONObject
 import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.channels.Channels
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
 
@@ -19,11 +22,17 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
     companion object {
         private const val TAG = "AvcServer"
         private const val DEFAULT_BITRATE = 3_000_000  // 3 Mbps — sane ceiling for screen mirroring over constrained links
+        private const val MIN_BITRATE = 100_000        // 100 kbps floor for adaptive control
+        private const val MAX_BITRATE = 10_000_000      // 10 Mbps ceiling for adaptive control
         private const val DEFAULT_SCALE = 1.0f
         private const val DEFAULT_FPS = 30
         private const val MIN_FPS = 1
         private const val MAX_FPS = 60
-        private const val I_FRAME_INTERVAL = 1  // 1 second
+        private const val I_FRAME_INTERVAL = 2  // 2s — 3s created larger bursts than 1s; tuning down
+
+        // localabstract socket name for the live encoder control channel; the host
+        // forwards to it (adb forward tcp:N localabstract:devicekit-avc).
+        private const val CONTROL_SOCKET = "devicekit-avc"
 
         @JvmStatic
         fun main(args: Array<String>) {
@@ -48,7 +57,9 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                 when (args[i]) {
                     "--bitrate" -> {
                         if (i + 1 < args.size) {
-                            bitrate = args[i + 1].toIntOrNull()?.coerceAtLeast(100_000) ?: DEFAULT_BITRATE
+                            // Clamp startup bitrate to the same bounds as live updates
+                            // so --bitrate can't bypass the MAX_BITRATE ceiling.
+                            bitrate = args[i + 1].toIntOrNull()?.coerceIn(MIN_BITRATE, MAX_BITRATE) ?: DEFAULT_BITRATE
                             i++
                         }
                     }
@@ -79,6 +90,10 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
     }
 
     private val shutdownLatch = CountDownLatch(1)
+
+    // MediaCodec is driven from the encoder thread; control-socket commands are
+    // enqueued here and drained there so all codec access stays single-threaded.
+    private val codecCommands = ConcurrentLinkedQueue<() -> Unit>()
 
     private fun start() {
         try {
@@ -126,6 +141,54 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
             virtualDisplay?.release()
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing virtual display", e)
+        }
+    }
+
+    // startControlServer exposes live encoder control over a localabstract JSON-RPC
+    // socket. The host reaches it with `adb forward tcp:N localabstract:<CONTROL_SOCKET>`
+    // and POSTs "screencapture.setBitrate" / "screencapture.requestKeyFrame". Stdin
+    // can't be used: AvcServer is launched via `adb exec-out`, whose stdin is not
+    // forwarded to the device process (exec-out is output-only) — a socket is the
+    // only channel that reaches this shell-uid process. Control is best-effort: if
+    // the socket can't bind, streaming continues unaffected.
+    private fun startControlServer(codec: MediaCodec) {
+        JsonRpcSocketServer(CONTROL_SOCKET) { method, params ->
+            when (method) {
+                "screencapture.setBitrate" -> {
+                    val bps = params?.optInt("bps", -1) ?: -1
+                    if (bps <= 0) {
+                        throw JsonRpcSocketServer.RpcException(
+                            JsonRpcSocketServer.ERROR_INTERNAL,
+                            "setBitrate requires a positive 'bps'",
+                        )
+                    }
+                    val clamped = bps.coerceIn(MIN_BITRATE, MAX_BITRATE)
+                    // Apply on the encoder thread — never touch the codec from here.
+                    codecCommands.add {
+                        codec.setParameters(Bundle().apply {
+                            putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, clamped)
+                        })
+                        Log.d(TAG, "Applied live bitrate: $clamped bps")
+                    }
+                    JSONObject().put("bitrate", clamped)
+                }
+                "screencapture.requestKeyFrame" -> {
+                    codecCommands.add {
+                        codec.setParameters(Bundle().apply {
+                            putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                        })
+                        Log.d(TAG, "Requested immediate sync frame")
+                    }
+                    JSONObject().put("ok", true)
+                }
+                else -> throw JsonRpcSocketServer.RpcException(
+                    JsonRpcSocketServer.ERROR_METHOD_NOT_FOUND,
+                    "Method not found: $method",
+                )
+            }
+        }.startDaemon { e ->
+            // Bind runs on the daemon thread, so its failure surfaces here.
+            Log.w(TAG, "Failed to start control server; live control unavailable", e)
         }
     }
 
@@ -237,6 +300,11 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
         codec.start()
         Log.d(TAG, "AVC encoder started")
 
+        // Expose live encoder control (bitrate, keyframe) over a localabstract
+        // socket so the host can adapt to the viewer's measured downlink without
+        // restarting the stream.
+        startControlServer(codec)
+
         val bufferInfo = MediaCodec.BufferInfo()
         val timeout = 100_000L  // 100ms timeout for responsive shutdown (matches REPEAT_FRAME_DELAY)
 
@@ -253,6 +321,18 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
                 // Check if shutdown requested
                 if (shutdownLatch.count == 0L) {
                     break
+                }
+
+                // Apply pending control-socket commands on this (encoder) thread
+                // so every MediaCodec.setParameters call is serialized with encoding.
+                var command = codecCommands.poll()
+                while (command != null) {
+                    try {
+                        command()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error applying codec command", e)
+                    }
+                    command = codecCommands.poll()
                 }
 
                 // Dequeue encoded output buffer

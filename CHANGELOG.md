@@ -1,3 +1,10 @@
+## [1.2.4](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.4) (2026-07-13)
+* Feat: Live encoder control over a localabstract JSON-RPC socket — adjust bitrate and request keyframes without restarting the stream ([#38](https://github.com/mobile-next/devicekit-android/pull/38))
+* Fix: Hardened the JSON-RPC socket (read timeout, Content-Length cap, envelope validation) and serialized live encoder control onto the encoder thread ([#39](https://github.com/mobile-next/devicekit-android/pull/39))
+
+## [1.2.3](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.3) (2026-06-23)
+* Chore: Changed AVC bandwidth to 3Mbps with CBR (instead of VBR)
+
 ## [1.2.2](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.2) (2026-06-14)
 * Fix: Derive APK versionName/versionCode from the git tag at release time, so the published version matches the release tag
 
@@ -10,20 +17,20 @@
 * Feat: Added UI view tree dump service via instrumentation, as a workaround for UIAutomator2 timeouts during animations ([#14](https://github.com/mobile-next/devicekit-android/pull/14))
 * Fix: Reduced APK size by ~50% by removing over-broad ProGuard keep rules ([#14](https://github.com/mobile-next/devicekit-android/pull/14))
 
-## [1.1.5](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.5) (2025-12-07)
+## [1.1.5](https://github.com/mobile-next/devicekit-android/releases/tag/1.1.5) (2025-12-07)
 * Fixed: AVC encoder latency issues with reduced timeout
 * Fixed: Repeating frames bug, where screen had to change in order for stream to send bytes
 * Fixed: Proper shutdown and resource cleanup when stdout pipe is broken
 * Fixed: AVC stream shutdown when stdout closes
 
-## [1.1.4](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.4) (2025-11-29)
+## [1.1.4](https://github.com/mobile-next/devicekit-android/releases/tag/1.1.4) (2025-11-29)
 * Feat: Added support for AVC (H.264) codec for screencapture
 * Feat: Added --fps flag to control frame rate
 * Fix: Stop screen capture and streaming when stdout is closed
 
-## [1.1.3](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.3) (2025-09-04)
+## [1.1.3](https://github.com/mobile-next/devicekit-android/releases/tag/1.1.3) (2025-09-04)
 * Feat: New --scale and --quality parameters when encoding mjpeg stream ([#5](https://github.com/mobile-next/devicekit-android/pull/5))
 
-## [1.1.2](https://github.com/mobile-next/mobile-mcp/releases/tag/1.1.2) (2025-07-31)
+## [1.1.2](https://github.com/mobile-next/devicekit-android/releases/tag/1.1.2) (2025-07-31)
 * Fix: Enabled proguard optimization to reduce .apk file size
 

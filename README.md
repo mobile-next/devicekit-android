@@ -15,7 +15,7 @@ installed on the device.
   <a href="https://github.com/mobile-next/devicekit-android/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-blue.svg" alt="License" />
   </a>
-  <a href="http://mobilenexthq.com/join-slack">
+  <a href="https://mobilenext.ai/join-slack">
     <img src="https://img.shields.io/badge/join-Slack-blueviolet?logo=slack&style=flat" alt="Slack community channel" />
   </a>
 </p>
