@@ -1,3 +1,6 @@
+## [1.2.5](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.5) (2026-08-10)
+* Feat: `device.io.keyboard.hide` — dismisses the soft keyboard via app_process by sending BACK when the IME window is shown ([#36](https://github.com/mobile-next/devicekit-android/pull/36))
+
 ## [1.2.4](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.4) (2026-07-13)
 * Feat: Live encoder control over a localabstract JSON-RPC socket — adjust bitrate and request keyframes without restarting the stream ([#38](https://github.com/mobile-next/devicekit-android/pull/38))
 * Fix: Hardened the JSON-RPC socket (read timeout, Content-Length cap, envelope validation) and serialized live encoder control onto the encoder thread ([#39](https://github.com/mobile-next/devicekit-android/pull/39))
