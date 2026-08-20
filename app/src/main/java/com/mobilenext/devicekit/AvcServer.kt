@@ -194,8 +194,22 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
 
     private fun streamAvcFrames() {
         val displayInfo = DisplayUtils.getDisplayInfo()
-        val scaledWidth = (displayInfo.width * scale).toInt()
-        val scaledHeight = (displayInfo.height * scale).toInt()
+
+        // Check codec capabilities before attempting to configure
+        val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val codecInfo = codec.codecInfo
+        val capabilities = codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        val videoCapabilities = capabilities.videoCapabilities
+
+        // H.264 encoders only accept dimensions that are a multiple of their
+        // alignment (usually 2). A raw (display * scale).toInt() can be odd —
+        // e.g. Pixel 10 Pro's 2410-high display at scale 0.5 gives 1205 — and
+        // isSizeSupported() then rejects the size outright, killing the stream.
+        // Round each dimension down to the codec's alignment.
+        val widthAlign = maxOf(videoCapabilities.widthAlignment, 2)
+        val heightAlign = maxOf(videoCapabilities.heightAlignment, 2)
+        val scaledWidth = ((displayInfo.width * scale).toInt() / widthAlign) * widthAlign
+        val scaledHeight = ((displayInfo.height * scale).toInt() / heightAlign) * heightAlign
 
         Log.d(TAG, "Starting AVC stream: ${displayInfo.width}x${displayInfo.height} -> ${scaledWidth}x${scaledHeight}")
         Log.d(TAG, "Configuration: bitrate=$bitrate, fps=$fps, I-frame interval=${I_FRAME_INTERVAL}s")
@@ -203,17 +217,9 @@ class AvcServer(private val bitrate: Int, private val scale: Float, private val 
 
         // Validate dimensions
         if (scaledWidth <= 0 || scaledHeight <= 0) {
+            codec.release()
             throw IllegalArgumentException("Invalid dimensions: ${scaledWidth}x${scaledHeight}")
         }
-        if (scaledWidth % 2 != 0 || scaledHeight % 2 != 0) {
-            Log.w(TAG, "Warning: Dimensions not divisible by 2, may cause issues: ${scaledWidth}x${scaledHeight}")
-        }
-
-        // Check codec capabilities before attempting to configure
-        val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        val codecInfo = codec.codecInfo
-        val capabilities = codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        val videoCapabilities = capabilities.videoCapabilities
 
         Log.d(TAG, "Codec capabilities:")
         Log.d(TAG, "  Supported widths: ${videoCapabilities.supportedWidths}")
