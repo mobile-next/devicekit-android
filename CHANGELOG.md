@@ -1,3 +1,6 @@
+## [1.2.6](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.6) (2026-08-24)
+* Fix: Align scaled capture dimensions to encoder alignment ([#42](https://github.com/mobile-next/devicekit-android/pull/42))
+
 ## [1.2.5](https://github.com/mobile-next/devicekit-android/releases/tag/1.2.5) (2026-08-10)
 * Feat: `device.io.keyboard.hide` — dismisses the soft keyboard via app_process by sending BACK when the IME window is shown ([#36](https://github.com/mobile-next/devicekit-android/pull/36))
 
