@@ -1,3 +1,9 @@
+# ARCHIVED
+
+# THIS REPOSITORY HAS BEEN MERGED WITH MOBILECLI. THEY BOTH SHARE THE SAME LICENSE AND ALL CONTRIBUTORS
+
+# THE REPOSITORY WILL BE REMOVED ON 01 JAN 2027
+
 # Mobile Next Device Kit
 
 A set of tools for controlling Android devices and reading device state that is
